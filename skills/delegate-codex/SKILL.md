@@ -1,52 +1,80 @@
 ---
 name: delegate-codex
-description: Delegate scoped implementation or review work to a codex CLI worker.
+description: Use when delegating a task to a Codex (OpenAI) worker — user says "codex", "summon codex", "use sol/astra/terra/luna", wants a second-vendor opinion, or Claude weekly usage is high. Codex runs non-interactively via `codex exec`; hangs, wrong model slugs, sandbox git restrictions, and 5-hour usage limits are the usual failures.
 ---
 
-# Delegate to codex
+# Delegate to Codex
 
-## Tiers and permissions
+Codex-side twin of a Claude subagent. Same orchestration rules: brief with
+constraints + acceptance criteria, worker is sole executor, review the diff
+afterwards. The launcher prepends the standard worker preamble.
 
-luna → gpt-5.6-luna; terra → gpt-5.6-terra; sol → gpt-5.6-sol; astra → gpt-6-astra.
+## Tier ladder (orchestrator picks)
 
-Default workspace-write sandbox; --ro selects read-only. --effort defaults to medium. --add-dir D adds writable directories. Clean room uses ~/.codex-fresh with auth linked (POSIX) or copied (Windows) and plugins, recommended plugins, image generation, goals and memories disabled. --full uses the configured Codex home; repeat it on resume. Never use the Codex sandbox-bypass flag.
+| Tier | Codex model | ~Claude | Use for |
+|------|-------------|---------|---------|
+| `luna` | gpt-5.6-luna | Haiku | trivial lookups, formulaic generation |
+| `terra` | gpt-5.6-terra | Sonnet | **default** build / fix / test |
+| `sol` | gpt-5.6-sol | Opus | hard tasks, reviews |
+| `astra` | gpt-6-astra | Fable | hardest architecture / multi-system debugging |
+
+`--effort low|medium|high|xhigh|max` (default medium). Raise effort before tier.
 
 ## Commands
 
-Use `agent-delegates` when globally installed. Otherwise replace it with
+Use `agent-delegates` when globally installed. Otherwise use
 `npx github:Fiazul/agent-delegates` in every command.
 
 ```sh
-agent-delegates run codex terra BRIEF.md --cd "/path/to/repo"
-agent-delegates resume codex ID FOLLOWUP.md --cd "/path/to/repo"
-agent-delegates interrupt codex
+agent-delegates run codex terra BRIEF.md --cd /path/to/repo --name my-task
+agent-delegates resume codex THREAD_ID FOLLOWUP.md --cd /path/to/repo
+agent-delegates interrupt codex      # or interrupt my-task
 agent-delegates close codex
 ```
 
-Use `--name N` on run/resume for a named window; pass N to interrupt/close.
-Always repeat the working directory on resume. Returned ID: `thread_id`.
-Brief or follow-up filename `-` reads stdin. Raw vendor model slugs are supported.
+`--ro` selects read-only sandbox (reviews). `--add-dir D` adds writable dirs.
+Brief filename `-` reads stdin. Raw model slugs (e.g. `gpt-5.6-sol`) work
+as the tier argument.
 
-## Orchestration
+## Clean room (default)
 
-Write constraints and acceptance criteria into a brief. The shared preamble makes
-the worker sole executor, prohibits delegation and secrets, and requires a
-structured report. Run long jobs through the calling agent's background execution
-facility. Review artifacts and diffs; do not trust a DONE narrative alone.
-Answer OPEN QUESTIONS through resume to preserve context.
+Runs with `CODEX_HOME=~/.codex-fresh`: auth only, no user config, hooks, MCP,
+plugins, global AGENTS.md or memories. Input tokens: ~13k (vs ~92k with the
+user's full setup). Pass `--full` when the task needs user Codex skills or MCP;
+repeat `--full` on `resume` (threads live in the home they were created in).
+Still present: the skill catalog from `~/.agents/skills` (names only) and the
+repo's own `AGENTS.md`.
 
-Set `DELEGATE_OUT` to a scratch directory; `CODEX_WORKER_OUT` remains a fallback.
-Each job records brief.md, prompt.md, events.jsonl, last.md, thread_id, exit, and
-stderr.log. Read last.md first. The launcher prints out=, exit=, ID, usage=,
-open=, and the final message.
+## Where the user sees it
 
-## Console
+One terminal window per vendor/name, opened by the first job and **reused**
+by every later run/resume. The window shows: `BRIEF vendor model` header,
+narrative, tool activity, final result. Closes on `close` or after 10 idle
+minutes (`DELEGATE_IDLE_MIN`). Red only for worker failure.
 
-One window per vendor/name shows the brief, model, narrative, tool activity,
-and final report. Later run/resume calls reuse it. Logs are mirrored to
-`~/.cache/delegates/<name>/console.log`, or
-`%LOCALAPPDATA%/delegates/<name>/console.log` on Windows.
-`DELEGATE_IDLE_MIN` defaults to 10; `DELEGATE_NO_WINDOW=1` runs inline.
-Interrupt kills the process tree and cancels queued work, keeping the window.
-Close closes after current work. Linux uses desktop terminals then tmux;
-macOS uses Terminal.app; Windows uses Windows Terminal then cmd.
+The orchestrator drops a job file, spends no tokens watching, and gets
+`exit` + `last.md` back. No display → tmux fallback; `DELEGATE_NO_WINDOW=1`
+→ plain inline run.
+
+## Verify
+
+- Read `last.md`; grep `events.jsonl` only to debug.
+- `OPEN QUESTIONS` non-empty → `resume`, don't respawn.
+- Verify progress from **artifact state** (git status, file mtimes), not the
+  narrative. Non-trivial diff → review as usual.
+
+## Gotchas
+
+| Symptom | Cause / fix |
+|---------|-------------|
+| `codex exec` hangs, no output | stdin left open; launcher feeds via file. Manual call: add `</dev/null`. |
+| resume errors `unexpected argument '--color'` | `exec resume` accepts fewer flags; always pass the same `--cd` as the run. |
+| worker says file "absent" on resume | forgot `--cd`; it resumed in the orchestrator's cwd. |
+| `failed to load skill ...` on stderr | harmless; a broken skill in `~/.agents/skills`. |
+| ~30 s + 90k input tokens before first edit | `--full` loaded user's skills. Clean-room default avoids it. |
+| unknown model | slugs from `~/.codex/models_cache.json`. |
+| Codex cannot `git commit` | The sandbox mounts `.git` read-only. The orchestrator commits; brief the worker "do not commit". |
+| Stream ends with `turn.failed`, exit 1 | Codex hit the 5-hour usage limit mid-run. The exit message includes the reset time. Resume the same thread after the reset window. |
+
+Never use `--dangerously-bypass-approvals-and-sandbox`; `workspace-write` +
+`--add-dir` covers worktrees.

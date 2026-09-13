@@ -1,17 +1,38 @@
 ---
 name: delegates
-description: Show remaining quota and models for Claude, Codex, Antigravity, and Grok.
+description: Use when the user types /delegates or asks how much quota is left on Claude, Codex, Antigravity, or Grok, or before spawning any worker when Claude weekly usage may be high. Zero-cost status check; shows remaining quota and models for all four vendors.
 ---
 
-# Delegates status
+# /delegates — Quota and status
 
 Run `agent-delegates status`, or `npx github:Fiazul/agent-delegates status`
-when not globally installed. Print the table verbatim in a fenced block without
-routing commentary. The `delegates` executable with no arguments also shows status.
-Only add `--probe-grok` when asked: it spends a tiny paid call.
-Claude reads the snapshot produced by install --statusline; Codex queries usage;
-agy reports both quota groups; Grok uses the last-402 marker.
-Never print authentication files, tokens, or email addresses.
+when not globally installed. Print the output verbatim in a fenced block.
+No commentary, no tiers, no routing text — the user reads four lines and
+decides.
 
-Workers use delegate-codex, delegate-antigravity, delegate-grok, and delegate-claude.
-All use run, resume, interrupt, and close.
+Add `--probe-grok` only when asked: it spends a tiny paid call to refresh
+Grok's balance status.
+
+## What it shows
+
+| Column | Source |
+|--------|--------|
+| **claude** | `~/.claude/rate_limits.json` (written by `install --statusline`); weekly % and 5-hour % |
+| **codex** | ChatGPT usage API via local auth; weekly %, 5-hour %, reset hours |
+| **agy** | `agy -p /usage` (zero tokens); both quota groups: `gemini` and `claude/gpt` |
+| **grok** | `~/.grok/.last_402` marker or `--probe-grok`; models from `grok models` |
+
+Credentials and email addresses are never displayed.
+
+## Worker launchers
+
+Workers use these skills — each with `run`, `resume`, `interrupt`, `close`:
+
+| Skill | Vendors |
+|-------|---------|
+| `delegate-codex` | Codex (OpenAI) |
+| `delegate-antigravity` | Antigravity / agy (Google) |
+| `delegate-grok` | Grok Build (xAI) |
+| `delegate-claude` | Claude Code (Anthropic) |
+
+Routing guidance lives in `extras/claude-routing-rule.md`.

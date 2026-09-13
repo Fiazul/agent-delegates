@@ -1,52 +1,65 @@
 ---
 name: delegate-grok
-description: Delegate scoped implementation or review work to a grok CLI worker.
+description: Use when delegating a task to a Grok Build (xAI) worker via the grok CLI — user says "grok", "use grok", or asks whether Grok weeklies have reset. Grok is a paid weekly budget; HTTP 402 means exhausted. Check with `agent-delegates status --probe-grok` before launching.
 ---
 
-# Delegate to grok
+# Delegate to Grok Build
 
-## Tiers and permissions
+Third-vendor twin of a Claude subagent. Same brief/acceptance/review rules.
+The launcher prepends the standard worker preamble.
 
-fast → grok-4.5; best → grok-4.6.
+## Tier ladder
 
---yolo enables --always-approve; without it headless permission requests can be denied. --effort E selects reasoning effort. JSON errors and HTTP 402 fail the job; 402 stamps ~/.grok/.last_402. Only run status --probe-grok when asked to spend a tiny call checking balance. Reroute exhausted work to another authorized vendor.
+| Tier | Grok model | ~Claude | Use for |
+|------|------------|---------|---------|
+| `fast` | grok-4.5 | Sonnet | standard build / fix / test |
+| `best` | grok-4.6 | Opus | hard tasks, reviews |
+
+`--effort E` selects reasoning effort. Raw model slugs also accepted.
 
 ## Commands
 
-Use `agent-delegates` when globally installed. Otherwise replace it with
+Use `agent-delegates` when globally installed. Otherwise use
 `npx github:Fiazul/agent-delegates` in every command.
 
 ```sh
-agent-delegates run grok best BRIEF.md --cd "/path/to/repo"
-agent-delegates resume grok ID FOLLOWUP.md --cd "/path/to/repo"
+agent-delegates run grok best BRIEF.md --cd /path/to/repo --name my-task
+agent-delegates resume grok SESSION_ID FOLLOWUP.md --cd /path/to/repo
 agent-delegates interrupt grok
 agent-delegates close grok
 ```
 
-Use `--name N` on run/resume for a named window; pass N to interrupt/close.
-Always repeat the working directory on resume. Returned ID: `session_id`.
-Brief or follow-up filename `-` reads stdin. Raw vendor model slugs are supported.
+`--yolo` enables `--always-approve` (needed for briefs that run commands;
+headless mode can't prompt). Brief filename `-` reads stdin.
 
-## Orchestration
+## Permissions
 
-Write constraints and acceptance criteria into a brief. The shared preamble makes
-the worker sole executor, prohibits delegation and secrets, and requires a
-structured report. Run long jobs through the calling agent's background execution
-facility. Review artifacts and diffs; do not trust a DONE narrative alone.
-Answer OPEN QUESTIONS through resume to preserve context.
+Without `--yolo`, headless Grok denies permission requests. Use `--yolo`
+for briefs involving shell commands. Scope briefs to intended operations.
 
-Set `DELEGATE_OUT` to a scratch directory; `CODEX_WORKER_OUT` remains a fallback.
-Each job records brief.md, prompt.md, events.jsonl, last.md, session_id, exit, and
-stderr.log. Read last.md first. The launcher prints out=, exit=, ID, usage=,
-open=, and the final message.
+## Where the user sees it
 
-## Console
+One terminal window per vendor/name, opened by the first job and **reused**
+by every later run/resume. The window shows: `BRIEF grok model` header,
+narrative, tool activity, final result. Closes on `close` or after 10 idle
+minutes (`DELEGATE_IDLE_MIN`). Red only for worker failure.
 
-One window per vendor/name shows the brief, model, narrative, tool activity,
-and final report. Later run/resume calls reuse it. Logs are mirrored to
-`~/.cache/delegates/<name>/console.log`, or
-`%LOCALAPPDATA%/delegates/<name>/console.log` on Windows.
-`DELEGATE_IDLE_MIN` defaults to 10; `DELEGATE_NO_WINDOW=1` runs inline.
-Interrupt kills the process tree and cancels queued work, keeping the window.
-Close closes after current work. Linux uses desktop terminals then tmux;
-macOS uses Terminal.app; Windows uses Windows Terminal then cmd.
+No display → tmux fallback; `DELEGATE_NO_WINDOW=1` → plain inline run.
+
+## Verify
+
+- Check artifact state (git status, file mtimes), not the narrative.
+- `OPEN QUESTIONS` non-empty → `resume`, don't respawn.
+- Non-trivial diff → review as usual.
+
+## Gotchas
+
+| Symptom | Cause / fix |
+|---------|-------------|
+| `API error (status 402 ...) Grok Build usage balance exhausted` | Weekly budget exhausted. The launcher stamps `~/.grok/.last_402`. Reroute to Antigravity or Codex. |
+| `agent-delegates status` shows `unknown (--probe-grok)` | Add `--probe-grok` to make a tiny paid call that refreshes the status. |
+| JSON `session_id` field name uncertain | If resume fails, check `events.jsonl` for the actual field name (`session_id` / `sessionId`). The launcher tries all variants. |
+
+Clean room: `~/.grok/AGENTS.md` and `~/.grok/config.toml` load by default.
+`grok --agent <file>` and `--disallowed-tools` are the switches — untested
+until balance is back.

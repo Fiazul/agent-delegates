@@ -1,52 +1,72 @@
 ---
 name: delegate-antigravity
-description: Delegate scoped implementation or review work to a agy CLI worker.
+description: Use when delegating a task to Antigravity (agy) — free-tier Gemini/Claude via the agy CLI — because Claude weekly usage is high, user says "antigravity", "agy", "gemini worker", "use flash/pro", or wants a zero-cost second-vendor implementation. Headless agy auto-denies shell commands unless full-permission mode is used.
 ---
 
-# Delegate to agy
+# Delegate to Antigravity (agy)
 
-## Tiers and permissions
+Free-tier twin of a Claude subagent. Same brief/acceptance/review rules.
+The launcher prepends the standard worker preamble and adds an absolute
+`WORKING DIRECTORY` header to the prompt.
 
-lite → gemini-3.8-flash-low; flash → gemini-3.8-flash-high; pro → gemini-3.1-pro-high; sonnet → claude-sonnet-4-6; opus → claude-opus-4-6-thinking.
+## Tier ladder
 
-antigravity aliases agy. Default --dangerously-skip-permissions is needed for headless shell work; --safe selects accept-edits. Scope briefs carefully. --add-dir D adds a workspace directory. The launcher includes an absolute WORKING DIRECTORY header, allows that directory, disables slash commands, and sets a 60-minute print timeout. Check artifacts when lite claims success: tool_steps=0 is a warning sign.
+| Tier | agy model | ~Claude | Use for |
+|------|-----------|---------|---------|
+| `lite` | gemini-3.8-flash-low | Haiku | trivial; **may claim DONE without acting** |
+| `flash` | gemini-3.8-flash-high | Sonnet | **default** build / fix / test |
+| `pro` | gemini-3.1-pro-high | Opus | hard tasks, reviews |
+| `sonnet` | claude-sonnet-4-6 | — | Anthropic model on Google quota |
+| `opus` | claude-opus-4-6-thinking | — | Anthropic model on Google quota |
+
+Any raw slug from `agy models` also works as the tier.
 
 ## Commands
 
-Use `agent-delegates` when globally installed. Otherwise replace it with
+Use `agent-delegates` when globally installed. Otherwise use
 `npx github:Fiazul/agent-delegates` in every command.
 
 ```sh
-agent-delegates run agy flash BRIEF.md --cd "/path/to/repo"
-agent-delegates resume agy ID FOLLOWUP.md --cd "/path/to/repo"
+agent-delegates run agy flash BRIEF.md --cd /path/to/repo --name my-task
+agent-delegates resume agy CONVERSATION_ID FOLLOWUP.md --cd /path/to/repo
 agent-delegates interrupt agy
 agent-delegates close agy
 ```
 
-Use `--name N` on run/resume for a named window; pass N to interrupt/close.
-Always repeat the working directory on resume. Returned ID: `conversation_id`.
-Brief or follow-up filename `-` reads stdin. Raw vendor model slugs are supported.
+`--safe` selects accept-edits mode. `--add-dir D` adds workspace dirs.
+Brief filename `-` reads stdin. Vendor alias `antigravity` is accepted.
 
-## Orchestration
+## Permissions
 
-Write constraints and acceptance criteria into a brief. The shared preamble makes
-the worker sole executor, prohibits delegation and secrets, and requires a
-structured report. Run long jobs through the calling agent's background execution
-facility. Review artifacts and diffs; do not trust a DONE narrative alone.
-Answer OPEN QUESTIONS through resume to preserve context.
+Headless mode cannot prompt. `--mode accept-edits` auto-denies every shell
+command (the model runs `pwd` first and dies). The launcher passes
+`--dangerously-skip-permissions` by default. `--safe` opts back into
+accept-edits for deliberately edit-only runs. Consequence: no sandbox beyond
+the working dir. Keep briefs scoped and review the diff.
 
-Set `DELEGATE_OUT` to a scratch directory; `CODEX_WORKER_OUT` remains a fallback.
-Each job records brief.md, prompt.md, events.jsonl, last.md, conversation_id, exit, and
-stderr.log. Read last.md first. The launcher prints out=, exit=, ID, usage=,
-open=, and the final message.
+## Where the user sees it
 
-## Console
+One terminal window per vendor/name, opened by the first job and **reused**
+by every later run/resume. The window shows: `BRIEF antigravity model`
+header, narrative, tool activity, final result. Closes on `close` or after
+10 idle minutes (`DELEGATE_IDLE_MIN`). Red only for worker failure.
 
-One window per vendor/name shows the brief, model, narrative, tool activity,
-and final report. Later run/resume calls reuse it. Logs are mirrored to
-`~/.cache/delegates/<name>/console.log`, or
-`%LOCALAPPDATA%/delegates/<name>/console.log` on Windows.
-`DELEGATE_IDLE_MIN` defaults to 10; `DELEGATE_NO_WINDOW=1` runs inline.
-Interrupt kills the process tree and cancels queued work, keeping the window.
-Close closes after current work. Linux uses desktop terminals then tmux;
-macOS uses Terminal.app; Windows uses Windows Terminal then cmd.
+No display → tmux fallback; `DELEGATE_NO_WINDOW=1` → plain inline run.
+
+## Verify
+
+- `tool_steps=0` with a confident DONE = the model lied. Check artifact
+  state (git status, file mtimes).
+- Empty `last.md` → read stderr; usually the permission denial above.
+- Non-trivial diff → review as usual.
+
+## Gotchas
+
+| Symptom | Cause / fix |
+|---------|-------------|
+| `-p` took `--model` as its prompt | `-p PROMPT` must be last on the CLI; the launcher handles ordering. |
+| Run ends at exactly 5 min | default `--print-timeout 5m`; launcher passes `60m`. |
+| Quota / 429 in stderr | weekly bucket empty; `agent-delegates status` shows both buckets. Reroute to Codex or Claude. |
+| File landed in `~/.gemini/.../scratch/` | model treated "working dir" as its scratch; launcher states the absolute dir in the prompt. Check `git status`, not the narrative. |
+| Prompt too long for argv | keep briefs under ~100 KB; put bulk context in files the worker reads. |
+| Gemini flash burned ~75% of weekly bucket in a dozen runs | 250k input tokens per run is normal for flash. The `claude/gpt` bucket is separate. `agent-delegates status` shows both. Budget accordingly. |
