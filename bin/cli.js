@@ -10,7 +10,7 @@ const { status } = require('../lib/status');
 const HELP = `agent-delegates — visible, reusable CLI-agent workers
 
 Usage:
-  agent-delegates install [--statusline] [--uninstall]
+  agent-delegates install [--statusline] [--yes] [--skip-cli-install] [--uninstall]
   agent-delegates status [--probe-grok]
   agent-delegates run <vendor> <tier|model> <brief-file|-> [options]
   agent-delegates resume <vendor> <id> <message-file|-> [--cd DIR] [--name N] [--full]
@@ -28,6 +28,8 @@ Run options:
   --full         Codex user configuration instead of clean room
   --safe         agy accept-edits mode (default is full permission)
   --yolo         Grok/Claude full permission mode
+  --yes          install all missing vendor CLIs without prompting
+  --skip-cli-install  link skills without checking or installing vendor CLIs
 `;
 
 function die(message) {
@@ -39,7 +41,7 @@ function die(message) {
 function parseOptions(args) {
   const options = { addDir: [] };
   const positional = [];
-  const boolean = new Set(['--ro', '--full', '--safe', '--yolo', '--statusline', '--uninstall', '--probe-grok']);
+  const boolean = new Set(['--ro', '--full', '--safe', '--yolo', '--statusline', '--uninstall', '--probe-grok', '--yes', '--skip-cli-install']);
   const values = new Map([['--cd', 'cd'], ['--name', 'name'], ['--effort', 'effort'], ['--add-dir', 'addDir']]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -61,7 +63,7 @@ async function stdin() {
   return text;
 }
 
-async function main(argv = process.argv.slice(2)) {
+async function main(argv = process.argv.slice(2), dependencies = {}) {
   let command = argv.shift();
   if (!command && path.basename(process.argv[1] || '').startsWith('delegates')) command = 'status';
   if (!command || ['-h', '--help', 'help'].includes(command)) return console.log(HELP);
@@ -69,7 +71,7 @@ async function main(argv = process.argv.slice(2)) {
     if (command === 'install') {
       const { options, positional } = parseOptions(argv);
       if (positional.length) return die('install takes no positional arguments');
-      return install(options);
+      return await (dependencies.install || install)(options);
     }
     if (command === 'status') {
       const { options, positional } = parseOptions(argv);

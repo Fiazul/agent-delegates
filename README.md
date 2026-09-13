@@ -6,9 +6,9 @@ its report and execution artifacts.
 
 ## Install
 
-Requires Node.js 18+, npm, Git for GitHub installation, and authenticated vendor
-CLIs on PATH for the vendors you use. No runtime npm dependencies, Python, jq,
-or build step required.
+Requires Node.js 18+, npm, and Git for GitHub installation. Vendor CLIs can be
+installed during setup or supplied on PATH; authentication is a separate step.
+No runtime npm dependencies, Python, jq, or build step required.
 
 **Primary (durable global CLI):**
 
@@ -17,7 +17,27 @@ npm install -g github:Fiazul/agent-delegates
 agent-delegates install --statusline
 ```
 
-This links five skills into both `~/.claude/skills` and `~/.agents/skills`.
+This links five skills into both `~/.claude/skills` and `~/.agents/skills`. It
+also checks for the four vendor CLIs. In an interactive terminal, it shows the
+official install command for each missing CLI and asks before running it; the
+default answer is no. Use `--yes` to install all missing CLIs in an automated
+setup, or `--skip-cli-install` to link skills without checking vendor CLIs.
+Existing CLIs are left alone. `--uninstall` only removes this package's links
+and aliases; it never checks for or installs vendor CLIs.
+
+Non-interactive installs do not prompt or hang. Without `--yes`, they print the
+commands needed and leave setup partial. After any install (and for an existing
+CLI), authentication remains unverified: authenticate separately with
+`codex login`, `agy`, `grok`, or `claude` as appropriate. The install process
+never attempts to log in for you.
+
+The commands use the vendors' published installers: [Codex npm package](https://www.npmjs.com/package/@openai/codex),
+[Antigravity CLI](https://antigravity.google/cli/install.sh),
+[Grok CLI](https://x.ai/cli/install.sh), and [Claude Code](https://claude.ai/install.sh).
+On Windows, Antigravity and Claude use their published PowerShell installers.
+Grok's Windows installer URL is not verified, so the CLI prints manual guidance
+to the [xAI Build overview](https://docs.x.ai/build/overview) instead of guessing.
+Unsupported operating systems receive manual-install guidance and no download is attempted.
 Existing non-link directories are backed up as `<name>.bak-<timestamp>`.
 The global install survives npm cache pruning.
 
