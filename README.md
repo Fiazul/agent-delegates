@@ -15,7 +15,7 @@ grok     exhausted (402 on 2026-09-13)   grok-4.5 grok-4.6
 ## Install (one command)
 
 ```bash
-git clone git@github.com:Fiazul/agent-delegates.git ~/.agent-delegates && ~/.agent-delegates/install.sh --statusline
+git clone https://github.com/Fiazul/agent-delegates.git ~/.agent-delegates && ~/.agent-delegates/install.sh --statusline
 ```
 
 Symlinks the four skills into `~/.claude/skills` (Claude Code) and `~/.agents/skills`
