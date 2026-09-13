@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"claude-session-1","model":"claude-haiku-4-5-20251001"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Checking."},{"type":"tool_use","name":"Read","input":{"file_path":"a.js"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","content":"file text"}]}}
+{"type":"result","subtype":"success","is_error":false,"session_id":"claude-session-1","result":"DONE","usage":{"input_tokens":8,"output_tokens":2}}

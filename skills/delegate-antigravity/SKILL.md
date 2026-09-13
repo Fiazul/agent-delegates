@@ -1,79 +1,52 @@
 ---
 name: delegate-antigravity
-description: Use when delegating a task to a Google Antigravity (agy) worker — free-tier Gemini/Claude models via the `agy` CLI — because Claude weekly usage is high, the user says "antigravity", "agy", "gemini worker", or wants a second-vendor implementation at zero cost. Headless `agy -p` auto-denies shell commands and flag order matters.
+description: Delegate scoped implementation or review work to a agy CLI worker.
 ---
 
-# Delegate to Antigravity (agy)
+# Delegate to agy
 
-Free-tier twin of `sonnet5-worker`. Same orchestration rules (brief with constraints +
-acceptance criteria; worker is sole executor; review the diff afterwards). Only the launcher
-differs. Shared preamble: `~/.claude/skills/delegate-codex/worker-preamble.md`.
+## Tiers and permissions
 
-## Tier ladder
+lite → gemini-3.8-flash-low; flash → gemini-3.8-flash-high; pro → gemini-3.1-pro-high; sonnet → claude-sonnet-4-6; opus → claude-opus-4-6-thinking.
 
-| Tier | agy model | ~Claude | Use for |
-|------|-----------|---------|---------|
-| `lite` | gemini-3.8-flash-low | Haiku | trivial; **may claim DONE without acting** |
-| `flash` | gemini-3.8-flash-high | Sonnet | **default** build / fix / test |
-| `pro` | gemini-3.1-pro-high | Opus | hard tasks, reviews |
-| `sonnet` / `opus` | claude-sonnet-4-6 / claude-opus-4-6-thinking | same | Anthropic models on Google's quota |
+antigravity aliases agy. Default --dangerously-skip-permissions is needed for headless shell work; --safe selects accept-edits. Scope briefs carefully. --add-dir D adds a workspace directory. The launcher includes an absolute WORKING DIRECTORY header, allows that directory, disables slash commands, and sets a 60-minute print timeout. Check artifacts when lite claims success: tool_steps=0 is a warning sign.
 
-Any raw slug from `agy models` also works as the tier.
+## Commands
 
-## Launch (always `run_in_background: true`)
+Use `agent-delegates` when globally installed. Otherwise replace it with
+`npx github:Fiazul/agent-delegates` in every command.
 
-```bash
-export CODEX_WORKER_OUT=<scratchpad>/workers   # same Bash call as the launcher
-~/.claude/skills/delegate-antigravity/agy-worker.sh run flash BRIEF.md --name <task> --cd <repo>
-#   --safe        edits-only mode (default is --yolo, see Permissions)
-#   --add-dir D   extra writable dir
-echo "answer" | ~/.claude/skills/delegate-antigravity/agy-worker.sh resume <conversation_id> - --cd <repo>
+```sh
+agent-delegates run agy flash BRIEF.md --cd "/path/to/repo"
+agent-delegates resume agy ID FOLLOWUP.md --cd "/path/to/repo"
+agent-delegates interrupt agy
+agent-delegates close agy
 ```
 
-Run dir: `<out>/<name>-<ts>/{brief.md,prompt.md,events.jsonl,last.md,conversation_id,exit,stderr.log}`.
-Script prints `conversation_id=`, `tool_steps=`, `usage=`, `exit=`, then the final message.
+Use `--name N` on run/resume for a named window; pass N to interrupt/close.
+Always repeat the working directory on resume. Returned ID: `conversation_id`.
+Brief or follow-up filename `-` reads stdin. Raw vendor model slugs are supported.
 
-## Permissions
+## Orchestration
 
-Headless mode cannot prompt, and `--mode accept-edits` auto-denies every shell command (tested:
-the model runs `pwd` first and dies, even on edit-only briefs). So the launcher passes
-`--dangerously-skip-permissions` by default — **authorised by the user on 2026-09-13**.
-`--safe` opts back into accept-edits for a run you deliberately want edit-only.
-Consequence: the sandbox is the working dir plus whatever the model decides; keep briefs
-scoped, never point agy at the chat-API host project, and review the diff.
+Write constraints and acceptance criteria into a brief. The shared preamble makes
+the worker sole executor, prohibits delegation and secrets, and requires a
+structured report. Run long jobs through the calling agent's background execution
+facility. Review artifacts and diffs; do not trust a DONE narrative alone.
+Answer OPEN QUESTIONS through resume to preserve context.
 
-## Clean room
+Set `DELEGATE_OUT` to a scratch directory; `CODEX_WORKER_OUT` remains a fallback.
+Each job records brief.md, prompt.md, events.jsonl, last.md, conversation_id, exit, and
+stderr.log. Read last.md first. The launcher prints out=, exit=, ID, usage=,
+open=, and the final message.
 
-`--disable-slash-commands` is always passed (no skill/slash expansion). agy has no switch for
-its user-global rule (`~/.gemini/GEMINI.md`, ~800 tokens) or its builtin skill catalog;
-baseline is ~14k input tokens, mostly tool schemas. Acceptable; nothing to do.
+## Console
 
-## Where the user sees it
-
-One terminal window per vendor (titled `codex` / `agy` / `grok`, or `--name`), opened by the
-first job and **reused** by every later run/resume; it closes on `close` or after 10 idle
-minutes (`DELEGATE_IDLE_MIN`). The window is a file-driven job console: the orchestrator only
-drops a job file, spends no tokens watching it, and gets exit code + `last.md` back.
-
-```bash
-<launcher> interrupt [name]   # kill the running job, drop queued ones, keep the window
-<launcher> close [name]       # close the window (after the current job)
-```
-
-No display → tmux fallback; `DELEGATE_NO_WINDOW=1` → plain inline run.
-
-## Verify
-
-- `tool_steps=0` with a confident DONE = the model lied. Check artifact state (git status, file mtimes).
-- Empty `last.md` → read the stderr the script prints; usually the permission denial above.
-- Non-trivial diff → `opus5-reviewer` as usual.
-
-## Gotchas
-
-| Symptom | Fix |
-|---------|-----|
-| `-p took "--model" as its prompt` | `-p PROMPT` must be the **last** thing on the command line; script already orders it. |
-| Run ends at exactly 5 min | default `--print-timeout 5m`; script passes `60m`. |
-| Quota / 429 in stderr | weekly bucket empty (`agy -p /usage` shows both buckets, costs 0 tokens; `/delegates` prints them); reroute to Codex (`delegate-codex`) or Claude workers. |
-| File landed in `~/.gemini/antigravity-cli/scratch/` | model treated "working dir" as its scratch; launcher now states the absolute dir in the prompt and passes `--add-dir`. Check `git status` in the repo, not the narrative. |
-| Prompt too long for argv | keep briefs under ~100 KB; put bulk context in files the worker reads. |
+One window per vendor/name shows the brief, model, narrative, tool activity,
+and final report. Later run/resume calls reuse it. Logs are mirrored to
+`~/.cache/delegates/<name>/console.log`, or
+`%LOCALAPPDATA%/delegates/<name>/console.log` on Windows.
+`DELEGATE_IDLE_MIN` defaults to 10; `DELEGATE_NO_WINDOW=1` runs inline.
+Interrupt kills the process tree and cancels queued work, keeping the window.
+Close closes after current work. Linux uses desktop terminals then tmux;
+macOS uses Terminal.app; Windows uses Windows Terminal then cmd.

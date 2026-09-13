@@ -1,15 +1,15 @@
 ---
-name: delegate-grok
-description: Delegate scoped implementation or review work to a grok CLI worker.
+name: delegate-claude
+description: Delegate scoped implementation or review work to a claude CLI worker.
 ---
 
-# Delegate to grok
+# Delegate to claude
 
 ## Tiers and permissions
 
-fast → grok-4.5; best → grok-4.6.
+haiku → claude-haiku-4-5-20251001; sonnet → claude-sonnet-5; opus → claude-opus-5.
 
---yolo enables --always-approve; without it headless permission requests can be denied. --effort E selects reasoning effort. JSON errors and HTTP 402 fail the job; 402 stamps ~/.grok/.last_402. Only run status --probe-grok when asked to spend a tiny call checking balance. Reroute exhausted work to another authorized vendor.
+For a Codex, agy, or Grok agent delegating to Claude Code. Use haiku for small tasks, sonnet for implementation, and opus for difficult work. Default permission mode is acceptEdits; --yolo enables --dangerously-skip-permissions. Supports --effort E and --add-dir D. Print mode uses verbose stream-json; the window displays assistant text, tool names and short inputs, tool-result snippets, and the final result.
 
 ## Commands
 
@@ -17,10 +17,10 @@ Use `agent-delegates` when globally installed. Otherwise replace it with
 `npx github:Fiazul/agent-delegates` in every command.
 
 ```sh
-agent-delegates run grok best BRIEF.md --cd "/path/to/repo"
-agent-delegates resume grok ID FOLLOWUP.md --cd "/path/to/repo"
-agent-delegates interrupt grok
-agent-delegates close grok
+agent-delegates run claude haiku BRIEF.md --cd "/path/to/repo"
+agent-delegates resume claude ID FOLLOWUP.md --cd "/path/to/repo"
+agent-delegates interrupt claude
+agent-delegates close claude
 ```
 
 Use `--name N` on run/resume for a named window; pass N to interrupt/close.

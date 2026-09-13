@@ -1,0 +1,23 @@
+{
+  "name": "agent-delegates",
+  "version": "1.0.0",
+  "description": "Cross-vendor terminal workers for Codex, Antigravity, Grok, and Claude Code",
+  "type": "commonjs",
+  "bin": {
+    "agent-delegates": "bin/cli.js",
+    "delegates": "bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "skills/",
+    "extras/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  }
+}

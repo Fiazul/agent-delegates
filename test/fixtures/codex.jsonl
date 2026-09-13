@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"codex-thread-1"}
+{"type":"item.started","item":{"type":"command_execution","command":"npm test"}}
+{"type":"item.completed","item":{"type":"command_execution","aggregated_output":"2 tests passed\n","exit_code":0}}
+{"type":"item.completed","item":{"type":"file_change","changes":[{"kind":"edit","path":"/tmp/project/lib/a.js"}]}}
+{"type":"item.completed","item":{"type":"agent_message","text":"DONE"}}
+{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":3}}

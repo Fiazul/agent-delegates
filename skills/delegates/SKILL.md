@@ -1,16 +1,17 @@
 ---
 name: delegates
-description: Use when the user types /delegates or asks how much quota is left on Claude, Codex, Antigravity or Grok, or before spawning any worker when Claude weekly usage may be high.
+description: Show remaining quota and models for Claude, Codex, Antigravity, and Grok.
 ---
 
-# /delegates
+# Delegates status
 
-Tokenless alternative for the user: `! ~/.claude/skills/delegates/delegates.sh` in the prompt, or
-`delegates` in any shell (bashrc alias). Invoking `/delegates` costs one model turn to relay the table.
+Run `agent-delegates status`, or `npx github:Fiazul/agent-delegates status`
+when not globally installed. Print the table verbatim in a fenced block without
+routing commentary. The `delegates` executable with no arguments also shows status.
+Only add `--probe-grok` when asked: it spends a tiny paid call.
+Claude reads the snapshot produced by install --statusline; Codex queries usage;
+agy reports both quota groups; Grok uses the last-402 marker.
+Never print authentication files, tokens, or email addresses.
 
-Run `~/.claude/skills/delegates/delegates.sh` (add `--probe-grok` only if asked to recheck
-Grok; it costs one tiny call). Print the output verbatim in a fenced block. No commentary,
-no tiers, no routing text — the user reads four lines and decides.
-
-Each launcher opens the worker in its own terminal window. Launchers: `/delegate-codex`, `/delegate-antigravity`, `/delegate-grok`. Routing rule lives
-in global CLAUDE.md. Claude line comes from `~/.claude/rate_limits.json` (statusline writes it).
+Workers use delegate-codex, delegate-antigravity, delegate-grok, and delegate-claude.
+All use run, resume, interrupt, and close.

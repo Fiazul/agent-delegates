@@ -1,0 +1,4 @@
+{"event":"init","init":{"conversation_id":"agy-conversation-1","cwd":"/tmp/project","model":"gemini-3.8-flash-low"}}
+{"event":"step_update","step_update":{"state":"ACTIVE","step_type":"tool","tool_name":"view_file","tool_info":{"parameters":{"AbsolutePath":"/tmp/project/a.js"}}}}
+{"event":"step_update","step_update":{"state":"ACTIVE","step_type":"agent_response","text_delta":"Working."}}
+{"event":"result","result":{"response":"DONE","usage":{"input_tokens":12,"output_tokens":4}}}
