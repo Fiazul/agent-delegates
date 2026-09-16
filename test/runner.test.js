@@ -27,9 +27,30 @@ test('vendor jobs preserve prompts and paths with spaces as individual arguments
   }
 });
 
+test('cursor and opencode jobs put the prompt as a trailing argument', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-cursor-'));
+  for (const vendor of ['cursor', 'opencode']) {
+    const out = path.join(dir, vendor);
+    fs.mkdirSync(out);
+    const { job } = buildJob(vendor === 'cursor' ? 'agent' : 'opencode', vendor, 'run', vendor === 'cursor' ? 'auto' : 'opencode/mimo-v2.5-free', '', 'A brief with "quotes"', out, { cd: dir, yolo: true });
+    assert.equal(job.args.at(-1), fs.readFileSync(path.join(out, 'prompt.md'), 'utf8'));
+    assert.match(job.args.at(-1), /SOLE executor/);
+    if (vendor === 'cursor') {
+      assert.ok(job.args.includes('--trust'));
+      assert.ok(job.args.includes('--force'));
+      assert.equal(job.args[job.args.indexOf('--workspace') + 1], dir);
+    } else {
+      assert.ok(job.args.includes('--auto'));
+      assert.equal(job.args[job.args.indexOf('--dir') + 1], dir);
+    }
+    const follow = buildJob(job.cmd, vendor, 'resume', '', 'test-session', 'follow-up', out, { cd: dir }).job;
+    assert.ok(follow.args.includes('test-session'));
+  }
+});
+
 test('all stream fixtures yield final reports and resumable IDs', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-result-'));
-  for (const vendor of ['codex', 'agy', 'claude']) {
+  for (const vendor of ['codex', 'agy', 'claude', 'cursor', 'opencode']) {
     fs.copyFileSync(path.join(__dirname, 'fixtures', vendor + '.jsonl'), path.join(dir, 'events.jsonl'));
     try { fs.unlinkSync(path.join(dir, 'last.md')); } catch {}
     const result = extractResult(vendor, dir);

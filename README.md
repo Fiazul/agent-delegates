@@ -1,8 +1,8 @@
 # agent-delegates
 
-Run Codex, Antigravity, Grok Build, and Claude Code workers in reusable terminal
-windows. Give a worker a brief, follow up in the same conversation, and collect
-its report and execution artifacts.
+Run Codex, Antigravity, Grok Build, Claude Code, Cursor, and OpenCode workers
+in reusable terminal windows. Give a worker a brief, follow up in the same
+conversation, and collect its report and execution artifacts.
 
 ## Install
 
@@ -17,26 +17,28 @@ npm install -g github:Fiazul/agent-delegates
 agent-delegates install --statusline
 ```
 
-This links five skills into both `~/.claude/skills` and `~/.agents/skills`. It
-also checks for the four vendor CLIs. In an interactive terminal, it shows the
-official install command for each missing CLI and asks before running it; the
-default answer is no. Use `--yes` to install all missing CLIs in an automated
-setup, or `--skip-cli-install` to link skills without checking vendor CLIs.
+This links seven skills into `~/.claude/skills`, `~/.agents/skills`, and
+`~/.cursor/skills`. It also checks for the six vendor CLIs. In an interactive
+terminal, it shows the official install command for each missing CLI and asks
+before running it; the default answer is no. Use `--yes` to install all missing
+CLIs in an automated setup, or `--skip-cli-install` to link skills without
+checking vendor CLIs.
 Existing CLIs are left alone. `--uninstall` only removes this package's links
 and aliases; it never checks for or installs vendor CLIs.
 
 Non-interactive installs do not prompt or hang. Without `--yes`, they print the
 commands needed and leave setup partial. After any install (and for an existing
 CLI), authentication remains unverified: authenticate separately with
-`codex login`, `agy`, `grok`, or `claude` as appropriate. The install process
-never attempts to log in for you.
+`codex login`, `agy`, `grok`, `claude`, `agent login`, or `opencode auth login`
+as appropriate. The install process never attempts to log in for you.
 
 The commands use the vendors' published installers: [Codex npm package](https://www.npmjs.com/package/@openai/codex),
 [Antigravity CLI](https://antigravity.google/cli/install.sh),
-[Grok CLI](https://x.ai/cli/install.sh), and [Claude Code](https://claude.ai/install.sh).
-On Windows, Antigravity and Claude use their published PowerShell installers.
-Grok's Windows installer URL is not verified, so the CLI prints manual guidance
-to the [xAI Build overview](https://docs.x.ai/build/overview) instead of guessing.
+[Grok CLI](https://x.ai/cli/install.sh), [Claude Code](https://claude.ai/install.sh),
+[Cursor CLI](https://cursor.com/install), and [OpenCode](https://opencode.ai/install).
+On Windows, Antigravity, Claude, and Cursor use their published PowerShell
+installers. Grok and OpenCode Windows installer URLs are not verified, so the
+CLI prints manual guidance instead of guessing.
 Unsupported operating systems receive manual-install guidance and no download is attempted.
 Existing non-link directories are backed up as `<name>.bak-<timestamp>`.
 The global install survives npm cache pruning.
@@ -92,8 +94,9 @@ agent-delegates close codex
 agent-delegates --help
 ```
 
-Vendors are `codex`, `agy` (alias `antigravity`), `grok`, and `claude`. Use
-`--name N` on run/resume for a named window, then `interrupt N` or `close N`.
+Vendors are `codex`, `agy` (alias `antigravity`), `grok`, `claude`, `cursor`,
+and `opencode`. Use `--name N` on run/resume for a named window, then
+`interrupt N` or `close N`.
 A brief filename of `-` reads stdin. Always repeat `--cd` on resume.
 
 ### Skills and tiers
@@ -104,7 +107,9 @@ A brief filename of `-` reads stdin. Always repeat `--cd` on resume.
 | delegate-antigravity | lite, flash, pro, sonnet, opus |
 | delegate-grok | fast, best |
 | delegate-claude | haiku, sonnet, opus |
-| delegates | Remaining quota and models for all four vendors |
+| delegate-cursor | auto, composer |
+| delegate-opencode | free, go |
+| delegates | Remaining quota and models for all six vendors |
 
 The skill documents list model mappings, permission semantics, and
 orchestration guidance.
@@ -120,7 +125,7 @@ orchestration guidance.
 | `--ro` | Codex | read-only sandbox |
 | `--full` | Codex | user configuration instead of clean room; repeat on resume |
 | `--safe` | agy | accept-edits mode (default is full permission) |
-| `--yolo` | Grok, Claude | full permission mode |
+| `--yolo` | Grok, Claude, Cursor, OpenCode | full permission mode |
 
 Codex uses `workspace-write` (or `--ro`), with an auth-only `~/.codex-fresh`
 home. Codex never uses the sandbox-bypass flag.
@@ -129,7 +134,8 @@ Antigravity defaults to `--dangerously-skip-permissions` because headless
 `accept-edits` auto-denies shell commands. `--safe` selects accept-edits.
 
 Grok's `--yolo` selects `--always-approve`. Claude defaults to `acceptEdits`;
-`--yolo` enables `--dangerously-skip-permissions`. Scope briefs to the intended
+`--yolo` enables `--dangerously-skip-permissions`. Cursor's `--yolo` selects
+`--force`. OpenCode's `--yolo` selects `--auto`. Scope briefs to the intended
 files and operations.
 
 ### Quota table
@@ -145,7 +151,8 @@ grok    unknown (--probe-grok)                 grok-4.5 grok-4.6
 ```
 
 Claude needs a statusline snapshot; Codex queries its local auth; agy uses
-`/usage` and `models`; Grok uses the last-402 marker. Credentials and email
+`/usage` and `models`; Grok uses the last-402 marker; Cursor uses `agent status`;
+OpenCode uses auth-file presence plus `opencode models`. Credentials and email
 addresses are never displayed.
 
 ## Windows and logs
@@ -165,7 +172,8 @@ Interrupt kills the worker process tree; close waits for active work.
 Console logs live at `~/.cache/delegates/<name>/console.log` on POSIX and
 `%LOCALAPPDATA%/delegates/<name>/console.log` on Windows. Each output directory
 contains `brief.md`, `prompt.md`, `events.jsonl`, `last.md`, `exit`, `stderr.log`,
-and `thread_id` (Codex), `conversation_id` (agy), or `session_id` (Grok/Claude).
+and `thread_id` (Codex), `conversation_id` (agy), or `session_id`
+(Grok/Claude/Cursor/OpenCode).
 The caller receives `out=`, `exit=`, the ID, `usage=`, `open=`, and the final
 report. Treat briefs and worker transcripts as private project data.
 

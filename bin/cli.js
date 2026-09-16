@@ -17,7 +17,7 @@ Usage:
   agent-delegates interrupt <vendor|name>
   agent-delegates close <vendor|name>
 
-Vendors: codex, agy (antigravity), grok, claude
+Vendors: codex, agy (antigravity), grok, claude, cursor, opencode
 
 Run options:
   --cd DIR       working directory
@@ -27,7 +27,7 @@ Run options:
   --add-dir D    extra working directory (repeatable)
   --full         Codex user configuration instead of clean room
   --safe         agy accept-edits mode (default is full permission)
-  --yolo         Grok/Claude full permission mode
+  --yolo         Grok/Claude/Cursor/OpenCode full permission mode
   --yes          install all missing vendor CLIs without prompting
   --skip-cli-install  link skills without checking or installing vendor CLIs
 `;

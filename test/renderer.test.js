@@ -34,3 +34,18 @@ test('claude renderer shows text, tool input, result snippets, and final result'
   assert.match(output, /file text/);
   assert.match(output, /RESULT\nDONE/);
 });
+
+test('cursor renderer mirrors Claude-style stream events', () => {
+  const output = render('cursor');
+  assert.match(output, /cursor session started/);
+  assert.match(output, /Checking\./);
+  assert.match(output, /Read \{"path":"a\.js"\}/);
+  assert.match(output, /RESULT\nDONE/);
+});
+
+test('opencode renderer shows text and step finish', () => {
+  const output = render('opencode');
+  assert.match(output, /opencode · opencode-session-1/);
+  assert.match(output, /^DONE$/m);
+  assert.match(output, /RESULT/);
+});

@@ -1,7 +1,7 @@
 {
   "name": "agent-delegates",
   "version": "1.0.0",
-  "description": "Cross-vendor terminal workers for Codex, Antigravity, Grok, and Claude Code",
+  "description": "Cross-vendor terminal workers for Codex, Antigravity, Grok, Claude Code, Cursor, and OpenCode",
   "type": "commonjs",
   "bin": {
     "agent-delegates": "bin/cli.js",

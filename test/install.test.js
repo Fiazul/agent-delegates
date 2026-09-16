@@ -9,7 +9,7 @@ const { SKILLS, install } = require('../lib/install');
 const { checkedSpawn, commandExists, defaultInstall, setupVendorClis, VENDORS } = require('../lib/vendor-setup');
 const { main, parseOptions } = require('../bin/cli');
 
-test('install uses HOME and creates all five skill links in both runtimes', async () => {
+test('install uses HOME and creates skill links in Claude, agents, and Cursor', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
   fs.writeFileSync(path.join(fakeHome, '.bashrc'), '# test\n');
   const oldHome = process.env.HOME;
@@ -18,7 +18,7 @@ test('install uses HOME and creates all five skill links in both runtimes', asyn
   process.env.USERPROFILE = fakeHome;
   try {
     await install({ statusline: true, skipCliInstall: true, log() {} });
-    for (const runtime of ['.claude', '.agents']) for (const skill of SKILLS) {
+    for (const runtime of ['.claude', '.agents', '.cursor']) for (const skill of SKILLS) {
       const target = path.join(fakeHome, runtime, 'skills', skill);
       assert.equal(fs.lstatSync(target).isSymbolicLink(), true, target);
     }
@@ -46,12 +46,12 @@ test('vendor setup prompts per missing CLI and skips declined installers', async
   assert.deepEqual(installs, []);
   assert.equal(result.ready, false);
   assert.deepEqual(result.existing, ['codex']);
-  assert.deepEqual(result.skipped, ['agy', 'grok', 'claude']);
+  assert.deepEqual(result.skipped, ['agy', 'grok', 'claude', 'cursor', 'opencode']);
   assert.match(log.join('\n'), /https:\/\/antigravity\.google\/cli\/install\.sh/);
 });
 
 test('vendor setup installs after an interactive yes answer', async () => {
-  const installed = new Set(['agy', 'grok', 'claude']);
+  const installed = new Set(['agy', 'grok', 'claude', 'agent', 'opencode']);
   const prompts = [];
   const result = await setupVendorClis({
     commandExists: name => installed.has(name),
@@ -75,7 +75,7 @@ test('vendor setup --yes installs missing CLIs and verifies them afterwards', as
     isTTY: false,
   });
   assert.equal(result.ready, true);
-  assert.deepEqual(result.installed, ['agy', 'grok', 'claude']);
+  assert.deepEqual(result.installed, ['agy', 'grok', 'claude', 'cursor', 'opencode']);
 });
 
 test('vendor setup does not install in non-TTY mode without --yes', async () => {
@@ -89,7 +89,7 @@ test('vendor setup does not install in non-TTY mode without --yes', async () => 
   });
   assert.deepEqual(attempted, []);
   assert.equal(result.ready, false);
-  assert.deepEqual(result.skipped, ['codex', 'agy', 'grok', 'claude']);
+  assert.deepEqual(result.skipped, ['codex', 'agy', 'grok', 'claude', 'cursor', 'opencode']);
 });
 
 test('vendor setup surfaces installer and post-install verification failures', async () => {
@@ -105,21 +105,22 @@ test('vendor setup surfaces installer and post-install verification failures', a
   }), /not found after installation/);
 });
 
-test('Windows Grok and unsupported OS use manual guidance without an installer', async () => {
+test('Windows Grok/OpenCode and unsupported OS use manual guidance without an installer', async () => {
   const installed = new Set();
   const windows = await setupVendorClis({
     platform: 'win32', yes: true, commandExists: name => installed.has(name),
     install: async vendor => installed.add(vendor.command), log() {}, isTTY: false,
   });
   assert.ok(windows.skipped.includes('grok'));
-  assert.deepEqual(windows.installed, ['codex', 'agy', 'claude']);
+  assert.ok(windows.skipped.includes('opencode'));
+  assert.deepEqual(windows.installed, ['codex', 'agy', 'claude', 'cursor']);
   let unsupportedInstallerCalled = false;
   const unsupported = await setupVendorClis({
     platform: 'sunos', yes: true, commandExists: () => false,
     install: async () => { unsupportedInstallerCalled = true; }, log() {}, isTTY: false,
   });
   assert.equal(unsupportedInstallerCalled, false);
-  assert.deepEqual(unsupported.skipped, ['codex', 'agy', 'grok', 'claude']);
+  assert.deepEqual(unsupported.skipped, ['codex', 'agy', 'grok', 'claude', 'cursor', 'opencode']);
   await assert.rejects(() => defaultInstall(VENDORS[1], 'sunos'), /Unsupported OS/);
 });
 
@@ -155,7 +156,7 @@ test('real readline prompt accepts yes before closing the interface', () => {
   const { spawnSync } = require('node:child_process');
   const script = `
     const { setupVendorClis } = require('./lib/vendor-setup');
-    const installed = new Set(['agy', 'grok', 'claude']);
+    const installed = new Set(['agy', 'grok', 'claude', 'agent', 'opencode']);
     setupVendorClis({
       isTTY: true,
       commandExists: name => installed.has(name),

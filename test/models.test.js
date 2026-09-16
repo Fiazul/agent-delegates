@@ -16,7 +16,13 @@ test('tier maps cover every vendor and documented tier', () => {
   assert.deepEqual(TIER_MAPS.claude, {
     haiku: 'claude-haiku-4-5-20251001', sonnet: 'claude-sonnet-5', opus: 'claude-opus-5'
   });
+  assert.deepEqual(TIER_MAPS.cursor, { auto: 'auto', composer: 'composer-2.5' });
+  assert.deepEqual(TIER_MAPS.opencode, {
+    free: 'opencode/mimo-v2.5-free', go: 'opencode-go/kimi-k2.7-code'
+  });
   assert.equal(canonicalVendor('antigravity'), 'agy');
   assert.equal(resolveModel('agy', 'gemini-custom'), 'gemini-custom');
+  assert.equal(resolveModel('cursor', 'composer-2.5-fast'), 'composer-2.5-fast');
+  assert.equal(resolveModel('opencode', 'opencode/big-pickle'), 'opencode/big-pickle');
   assert.throws(() => resolveModel('codex', 'unknown'), /unknown codex tier/);
 });

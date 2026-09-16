@@ -3,9 +3,9 @@
 ## What this project is
 
 A zero-dependency Node CLI (`agent-delegates`) that runs Codex, Antigravity,
-Grok Build, and Claude Code workers in reusable terminal windows. An
-orchestrating agent writes a brief, the launcher opens the worker in a
-visible console, and collects `exit` + `last.md` when it finishes.
+Grok Build, Claude Code, Cursor, and OpenCode workers in reusable terminal
+windows. An orchestrating agent writes a brief, the launcher opens the worker
+in a visible console, and collects `exit` + `last.md` when it finishes.
 
 ## Architecture
 
