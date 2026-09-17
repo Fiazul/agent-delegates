@@ -113,18 +113,50 @@ npx --yes github:Fiazul/agent-delegates install
 
 `--yes` skips the setup questions below and installs all missing vendor CLIs
 without prompting (useful for a one-shot try-it, or any non-interactive
-context). Everything this installs points at npm's cached checkout of the
-package (`packageRoot`) rather than a copy: the skill symlinks, the
-`UserPromptSubmit` hook stub, and the `delegates` bashrc alias. If the cache
-is pruned, all three break — the hook stub is fail-soft (it exits 0 instead
-of erroring when the package it points at is gone), but skills and the alias
-just stop resolving. Prefer `npm install -g` for a permanent install; if
-you've already gone the npx route, re-run `install` after a cache prune to
-re-link everything against the newly restored cache.
+context). `npx` is ephemeral — the checkout it runs from can be pruned any
+time — so `install` never leaves anything pointing at it. Its first step
+copies the package (`bin/`, `lib/`, `skills/`, `extras/`, `package.json`,
+`README.md`, `LICENSE`) into a stable install home:
+
+- POSIX: `~/.agent-delegates/pkg`
+- Windows: `%LOCALAPPDATA%\agent-delegates\pkg` (falls back to
+  `%USERPROFILE%\.agent-delegates\pkg` when `LOCALAPPDATA` isn't set)
+
+Every artifact `install` writes after that — the skill symlinks, the
+statusline and `UserPromptSubmit`/`PreToolUse` hook copies, and the command
+below — references this copy, never the transient location the installer
+happened to run from. Re-running `install` (e.g. `npx --yes
+github:Fiazul/agent-delegates install` again after an upgrade) replaces the
+copy fresh each time, so it always reflects the current package. Running the
+already-installed copy's own `install` (e.g. after `npm install -g`) is a
+no-op for this step — there's nothing to copy onto itself.
+
+The last step puts the `agent-delegates` command on PATH as a real shim
+(never a shell alias — aliases don't exist in the non-interactive shells most
+agent tooling spawns, which was the actual bug this replaces: `agent-delegates
+status` from a script or another tool's Bash tool used to fail with `command
+not found`):
+
+- POSIX: executable shims at `~/.local/bin/agent-delegates` and
+  `~/.local/bin/delegates`, each `exec`'ing the copied `bin/cli.js`. If
+  `~/.local/bin` isn't already on PATH, `install` prints the `export PATH=...`
+  line to add it.
+- Windows: `agent-delegates.cmd` and `delegates.cmd` in
+  `%LOCALAPPDATA%\agent-delegates\bin`; if that directory isn't on your user
+  PATH, an interactive terminal asks before adding it via `setx` (never the
+  machine-wide PATH) — `--no-path` skips the prompt and just prints the
+  instruction, and a non-TTY run always just prints it.
+
+A shim is only ever written or removed if it already carries agent-delegates'
+own marker comment — a foreign file at the same path is left alone with a
+warning, never overwritten or deleted.
 
 Replace `agent-delegates` with `npx github:Fiazul/agent-delegates` in all
-commands below when not globally installed. Reinstall to update. Remove
-installed links with `agent-delegates install --uninstall`; backups are retained.
+commands below when not globally installed, or once installed, use the
+`agent-delegates` command directly from any shell. Reinstall to update.
+Remove installed links, the shim, and the copied package with
+`agent-delegates install --uninstall`; skill-link backups are retained,
+and `routing.json` is never touched.
 
 ### Cursor and Grok both install `agent`
 

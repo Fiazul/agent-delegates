@@ -21,8 +21,9 @@ bin/cli.js          CLI entry point: parses commands, dispatches
   lib/guard.js      critical-work guard: assessCriticality(), enforce() (refuse small tiers), permissionMode()
   lib/route.js      run auto: pickVendor() from status rows, quota-exhaustion-only hop loop
   lib/handoff.js    builds a continuation brief from a finished job dir and fires it at another vendor
-  lib/install.js    skill symlinks, statusline + routing-nudge hook install/uninstall, shell aliases
-  lib/util.js       homeDir, outputRoot, timestamp, readJson, shellQuote
+  lib/install.js    copies the package into installHome() first, then: skill symlinks, statusline +
+                    routing-nudge hook install/uninstall, and the agent-delegates/delegates PATH shims
+  lib/util.js       homeDir, installHome, outputRoot, timestamp, readJson, shellQuote
   lib/process.js    cross-platform spawn wrapper
 extras/delegate-nudge.js  UserPromptSubmit + PreToolUse hook implementation (exports main() for the installed stub)
 ```
@@ -100,6 +101,21 @@ node bin/cli.js handoff /path/to/out-dir codex terra --cd /path/to/repo   # cont
   default) — it always backs up the existing file to `settings.json.bak-<timestamp>` first, and
   merges rather than replaces (existing hooks/keys survive). A malformed existing
   `settings.json` makes `install` fail loudly before touching anything, rather than guessing.
+- H3: nothing `install` leaves behind may reference the location it happened to run from — under
+  `npx` that's a prunable cache dir. `install()`'s first step (`copyPackageToInstallHome` in
+  `lib/install.js`) copies the running package (per `package.json`'s `files` list, plus
+  `package.json` itself) into `installHome()`'s `pkg/` subdir (`lib/util.js`:
+  `~/.agent-delegates` POSIX, `%LOCALAPPDATA%\agent-delegates` win32, falling back to
+  `%USERPROFILE%\.agent-delegates`), fresh-replacing any prior copy; a no-op when already run
+  from inside that home. Every artifact written after that (`installStatusline`, `installHook`/
+  `installNudgeCopy`, the skill symlinks, the command shims) takes a `pkgRoot` parameter sourced
+  from this copy, never `packageRoot()` directly. The command itself is a real shim (POSIX:
+  `~/.local/bin/agent-delegates`/`delegates`; win32: `agent-delegates.cmd`/`delegates.cmd` in
+  `installHome()/bin`), not a `.bashrc` alias — aliases don't exist in the non-interactive shells
+  most agent tooling spawns. Every shim carries the `agent-delegates shim` marker comment so
+  `install`/`--uninstall` can tell "ours" from a foreign file at the same path and never touch
+  the latter. `--uninstall` removes the shims (if ours) and the whole `installHome()/pkg` copy;
+  it never touches `routing.json`.
 - `route-check`/`pick`/`run auto` read a vendor-status cache at `~/.cache/delegates/rows.json`
   (`%LOCALAPPDATA%/delegates/rows.json` on Windows) when younger than `rowsTtlMinutes` in
   `routing.json` (default 10 min), otherwise they probe and refresh it; `--probe` forces a fresh

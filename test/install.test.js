@@ -6,7 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
-const { SKILLS, hookStub, install, installHook, uninstallHook } = require('../lib/install');
+const { SKILLS, hookStub, install, installHook, uninstallHook, copyPackageToInstallHome, pkgDir, installCommandShims, removeCommandShims, isOurShim, posixBinDir } = require('../lib/install');
+const { installHome } = require('../lib/util');
 const { checkedSpawn, commandExists, defaultInstall, setupVendorClis, VENDORS } = require('../lib/vendor-setup');
 const { main, parseOptions } = require('../bin/cli');
 
@@ -23,8 +24,17 @@ test('install uses HOME and creates skill links in Claude, agents, and Cursor', 
       const target = path.join(fakeHome, runtime, 'skills', skill);
       assert.equal(fs.lstatSync(target).isSymbolicLink(), true, target);
     }
-    assert.match(fs.readFileSync(path.join(fakeHome, '.bashrc'), 'utf8'), /alias delegates=.*bin\/cli\.js/);
+    // New installs no longer touch .bashrc/.zshrc with a `delegates` alias (H3): the alias is
+    // useless in non-interactive shells and every future artifact must resolve without one.
+    assert.doesNotMatch(fs.readFileSync(path.join(fakeHome, '.bashrc'), 'utf8'), /alias delegates=/);
     for (const skill of SKILLS) assert.ok(fs.existsSync(path.join(fakeHome, '.agents', 'skills', skill, 'SKILL.md')));
+    // Skills resolve into the copied install-home package, never the transient packageRoot().
+    const skillLinkTarget = fs.readlinkSync(path.join(fakeHome, '.agents', 'skills', SKILLS[0]));
+    assert.equal(path.resolve(path.dirname(path.join(fakeHome, '.agents', 'skills', SKILLS[0])), skillLinkTarget), path.join(pkgDir(fakeHome), 'skills', SKILLS[0]));
+    // A POSIX command shim exists on a stable, non-transient path.
+    const shim = path.join(posixBinDir(fakeHome), 'agent-delegates');
+    assert.equal(fs.existsSync(shim), true);
+    assert.match(fs.readFileSync(shim, 'utf8'), new RegExp(pkgDir(fakeHome).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     const settings = JSON.parse(fs.readFileSync(path.join(fakeHome, '.claude', 'settings.json'), 'utf8'));
     assert.match(settings.statusLine.command, /agent-delegates-statusline\.js/);
   } finally {
@@ -1231,4 +1241,125 @@ test('install: alias prompt appears when a binary resolved only via a well-known
     log: () => {}
   });
   assert.ok(asked.some(q => /shell aliases/.test(q)), 'alias prompt expected when grok is not reachable by name');
+});
+
+// H3: install must never leave behind an artifact pointing at the transient location it happened
+// to run from (an npx cache dir) — everything resolves through a stable, copied install home
+// instead, and a real shim (not a bashrc alias, useless non-interactively) lands on PATH.
+test('H3: install copies the package into the install home with the expected top-level entries', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  await install({ home: fakeHome, main: 'all', skipCliInstall: true, commandExists: () => true, log() {} });
+  const dest = pkgDir(fakeHome);
+  for (const entry of ['bin', 'lib', 'skills', 'extras', 'package.json', 'README.md', 'LICENSE']) {
+    assert.ok(fs.existsSync(path.join(dest, entry)), `${entry} missing from copied install home`);
+  }
+  assert.ok(fs.existsSync(path.join(dest, 'bin', 'cli.js')));
+});
+
+test('H3: skill symlinks resolve into the install home copy, not the running packageRoot()', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  await install({ home: fakeHome, main: 'claude', skipCliInstall: true, commandExists: () => true, log() {} });
+  for (const skill of SKILLS) {
+    const link = path.join(fakeHome, '.claude', 'skills', skill);
+    const target = fs.readlinkSync(link);
+    const resolved = path.resolve(path.dirname(link), target);
+    assert.equal(resolved, path.join(pkgDir(fakeHome), 'skills', skill));
+  }
+});
+
+test('H3: POSIX shim is a real executable pointing at the copied cli.js, not the running package', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  await install({ home: fakeHome, main: 'claude', skipCliInstall: true, commandExists: () => true, log() {} });
+  for (const name of ['agent-delegates', 'delegates']) {
+    const shim = path.join(posixBinDir(fakeHome), name);
+    const content = fs.readFileSync(shim, 'utf8');
+    assert.match(content, /agent-delegates shim/);
+    assert.match(content, new RegExp(path.join(pkgDir(fakeHome), 'bin', 'cli.js').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    const mode = fs.statSync(shim).mode & 0o777;
+    assert.equal(mode & 0o111, 0o111, `${shim} is not executable (mode ${mode.toString(8)})`);
+  }
+});
+
+test('H3: a foreign file at the shim path is never overwritten, and is reported', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  const binDir = posixBinDir(fakeHome);
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(path.join(binDir, 'agent-delegates'), '#!/bin/sh\necho not ours\n');
+  const log = [];
+  await install({ home: fakeHome, main: 'claude', skipCliInstall: true, commandExists: () => true, log: l => log.push(l) });
+  assert.equal(fs.readFileSync(path.join(binDir, 'agent-delegates'), 'utf8'), '#!/bin/sh\necho not ours\n');
+  assert.ok(log.some(l => /WARNING/.test(l) && /agent-delegates/.test(l)), 'expected a warning about the foreign file');
+  // The sibling 'delegates' name is unaffected and still gets our shim.
+  assert.match(fs.readFileSync(path.join(binDir, 'delegates'), 'utf8'), /agent-delegates shim/);
+});
+
+test('H3: PATH-missing note is printed when the shim directory is not on PATH', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  const log = [];
+  await install({
+    home: fakeHome, main: 'claude', skipCliInstall: true, commandExists: () => true,
+    env: { PATH: '/usr/bin' }, log: l => log.push(l)
+  });
+  assert.ok(log.some(l => /is not on your PATH/.test(l)));
+  assert.ok(log.some(l => /export PATH=/.test(l)));
+});
+
+test('H3: install summary reports the shim as available when its directory is already on PATH', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  const log = [];
+  await install({
+    home: fakeHome, main: 'claude', skipCliInstall: true, commandExists: () => true,
+    env: { PATH: `${posixBinDir(fakeHome)}:/usr/bin` }, log: l => log.push(l)
+  });
+  assert.ok(log.some(l => /^Command available: agent-delegates \(shim at/.test(l)));
+  assert.ok(!log.some(l => /is not on your PATH/.test(l)));
+});
+
+test('H3: uninstall removes the shim and the copied install home, but leaves a foreign shim alone', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  await install({ home: fakeHome, main: 'claude', skipCliInstall: true, commandExists: () => true, log() {} });
+  const binDir = posixBinDir(fakeHome);
+  // Replace one of the two shims with a foreign file after install, to prove uninstall spares it.
+  fs.writeFileSync(path.join(binDir, 'delegates'), '#!/bin/sh\necho mine\n');
+  await install({ home: fakeHome, uninstall: true, log() {} });
+  assert.equal(fs.existsSync(path.join(binDir, 'agent-delegates')), false);
+  assert.equal(fs.readFileSync(path.join(binDir, 'delegates'), 'utf8'), '#!/bin/sh\necho mine\n');
+  assert.equal(fs.existsSync(pkgDir(fakeHome)), false);
+});
+
+test('H3: re-running install is idempotent — copy is replaced, exactly one shim per name', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  await install({ home: fakeHome, main: 'claude', skipCliInstall: true, commandExists: () => true, log() {} });
+  const dest = pkgDir(fakeHome);
+  // Plant a stale marker file that a real package copy would never contain, to prove the second
+  // install's fresh-replace (rm -rf then copy) actually happened rather than merging on top.
+  fs.writeFileSync(path.join(dest, 'STALE_MARKER'), 'x');
+  await install({ home: fakeHome, main: 'claude', skipCliInstall: true, commandExists: () => true, log() {} });
+  assert.equal(fs.existsSync(path.join(dest, 'STALE_MARKER')), false);
+  const binDir = posixBinDir(fakeHome);
+  assert.equal(fs.readdirSync(binDir).filter(n => n === 'agent-delegates').length, 1);
+  assert.equal(fs.readdirSync(binDir).filter(n => n === 'delegates').length, 1);
+});
+
+test('H3: win32 shim content points at the copied cli.js via an injected platform', async () => {
+  const original = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+  try {
+    const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+    const log = [];
+    await install({
+      home: fakeHome, main: 'claude', skipCliInstall: true, commandExists: () => true,
+      env: { LOCALAPPDATA: path.join(fakeHome, 'AppData', 'Local'), Path: 'C:\\Windows' },
+      spawnSetx: () => ({ status: 0 }),
+      log: l => log.push(l)
+    });
+    const binDir = path.join(installHome(fakeHome), 'bin');
+    const shim = path.join(binDir, 'agent-delegates.cmd');
+    const content = fs.readFileSync(shim, 'utf8');
+    assert.match(content, /^@echo off\r\n/);
+    assert.match(content, /agent-delegates shim/);
+    assert.match(content, new RegExp(path.join(pkgDir(fakeHome), 'bin', 'cli.js').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  } finally {
+    Object.defineProperty(process, 'platform', original);
+  }
 });

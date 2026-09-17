@@ -47,6 +47,7 @@ Run options:
   --skip-cli-install  link skills without checking or installing vendor CLIs
   --no-statusline  skip installing the Claude Code statusline (installed by default)
   --no-hook      skip installing the UserPromptSubmit routing-nudge hook (installed by default)
+  --no-path      install: don't offer to add the shim directory to PATH on win32 (print the instruction instead)
   --statusline/--hook  accepted for compatibility; both are already on by default (no-ops)
   --json         route-check: print one JSON line instead of a human line
   --self VENDOR  route-check: whose policy to report (only 'claude' supported for now)
@@ -67,7 +68,7 @@ function die(message) {
 function parseOptions(args) {
   const options = { addDir: [] };
   const positional = [];
-  const boolean = new Set(['--ro', '--full', '--safe', '--yolo', '--statusline', '--hook', '--no-statusline', '--no-hook', '--uninstall', '--probe-grok', '--yes', '--skip-cli-install', '--json', '--critical', '--allow-small', '--no-preflight', '--probe', '--no-login']);
+  const boolean = new Set(['--ro', '--full', '--safe', '--yolo', '--statusline', '--hook', '--no-statusline', '--no-hook', '--no-path', '--uninstall', '--probe-grok', '--yes', '--skip-cli-install', '--json', '--critical', '--allow-small', '--no-preflight', '--probe', '--no-login']);
   const values = new Map([['--cd', 'cd'], ['--name', 'name'], ['--effort', 'effort'], ['--add-dir', 'addDir'], ['--priority', 'priority'], ['--max-hops', 'maxHops'], ['--self', 'self'], ['--timeout', 'timeout'], ['--main', 'main'], ['--delegates', 'delegates'], ['--aliases', 'aliases'], ['--resolve-agent-conflict', 'resolveAgentConflict']]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
