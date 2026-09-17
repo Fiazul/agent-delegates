@@ -30,7 +30,9 @@ Which delegates do you want? [1] Antigravity [2] Codex [3] Grok [4] Claude [5] C
 ```
 
 **Q1 (main orchestrator)** decides where skills get linked — `claude` →
-`~/.claude/skills`, `codex` → `~/.agents/skills`, `cursor` → `~/.cursor/skills`,
+`~/.claude/skills`, `codex` → `$CODEX_HOME/skills` (default `~/.codex/skills`
+when `CODEX_HOME` is unset — never `~/.agents/skills`, which codex never
+reads), `cursor` → `~/.cursor/skills`,
 `all` → all three (the old default behaviour). The chosen main CLI must
 already be installed (this tool wires skills/hooks for it, it doesn't install
 an IDE/CLI); if it's missing, `install` stops with a clear error instead of

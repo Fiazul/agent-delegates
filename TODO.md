@@ -125,6 +125,13 @@ Findings from the same review pass as item 1 above, deferred rather than fixed o
   output/live runs — pending. claude verified live 2026-09-18: haiku run → resume pinned haiku, meta.model recorded.
 - m4 (deferred): spawn lock never refreshed while held; stale-clear path can unlink a fresh lock
   after a crash (lib/console.js acquireSpawnLock). Narrow, post-crash only.
+- Codex skill-link target fixed 2026-09-18: `install --main codex` used to link into
+  `~/.agents/skills`, which the codex binary never reads (`codex --help`: skills load from
+  `$CODEX_HOME/skills`, default `~/.codex/skills`). Now honors `CODEX_HOME` via `skillDirFor()`
+  in lib/install.js. `--uninstall` still sweeps the old `~/.agents/skills` location (in addition
+  to the corrected dirs) so pre-fix installs get fully cleaned up. Cursor's `~/.cursor/skills`
+  and Claude's `~/.claude/skills` were verified correct as-is (strings on cursor-agent's bundled
+  index.js confirm `.cursor/skills`).
 
 ## Codex resume model drift (fixed 2026-09-18, residual note)
 - Before the fix, `resume` passed no model to any vendor; Codex fell back to `gpt-6-astra`, so

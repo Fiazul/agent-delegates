@@ -11,7 +11,7 @@ const { installHome } = require('../lib/util');
 const { checkedSpawn, commandExists, defaultInstall, setupVendorClis, VENDORS } = require('../lib/vendor-setup');
 const { main, parseOptions } = require('../bin/cli');
 
-test('install uses HOME and creates skill links in Claude, agents, and Cursor', async () => {
+test('install uses HOME and creates skill links in Claude, codex, and Cursor', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
   fs.writeFileSync(path.join(fakeHome, '.bashrc'), '# test\n');
   const oldHome = process.env.HOME;
@@ -19,18 +19,21 @@ test('install uses HOME and creates skill links in Claude, agents, and Cursor', 
   process.env.HOME = fakeHome;
   process.env.USERPROFILE = fakeHome;
   try {
-    await install({ main: 'all', skipCliInstall: true, commandExists: () => true, log() {} });
-    for (const runtime of ['.claude', '.agents', '.cursor']) for (const skill of SKILLS) {
+    // No CODEX_HOME set here -> codex's skill dir must default to ~/.codex/skills, matching
+    // `codex --help`'s documented default, not the old (wrong) ~/.agents/skills.
+    await install({ main: 'all', skipCliInstall: true, commandExists: () => true, env: {}, log() {} });
+    for (const runtime of ['.claude', '.codex', '.cursor']) for (const skill of SKILLS) {
       const target = path.join(fakeHome, runtime, 'skills', skill);
       assert.equal(fs.lstatSync(target).isSymbolicLink(), true, target);
     }
+    assert.equal(fs.existsSync(path.join(fakeHome, '.agents', 'skills')), false);
     // New installs no longer touch .bashrc/.zshrc with a `delegates` alias (H3): the alias is
     // useless in non-interactive shells and every future artifact must resolve without one.
     assert.doesNotMatch(fs.readFileSync(path.join(fakeHome, '.bashrc'), 'utf8'), /alias delegates=/);
-    for (const skill of SKILLS) assert.ok(fs.existsSync(path.join(fakeHome, '.agents', 'skills', skill, 'SKILL.md')));
+    for (const skill of SKILLS) assert.ok(fs.existsSync(path.join(fakeHome, '.codex', 'skills', skill, 'SKILL.md')));
     // Skills resolve into the copied install-home package, never the transient packageRoot().
-    const skillLinkTarget = fs.readlinkSync(path.join(fakeHome, '.agents', 'skills', SKILLS[0]));
-    assert.equal(path.resolve(path.dirname(path.join(fakeHome, '.agents', 'skills', SKILLS[0])), skillLinkTarget), path.join(pkgDir(fakeHome), 'skills', SKILLS[0]));
+    const skillLinkTarget = fs.readlinkSync(path.join(fakeHome, '.codex', 'skills', SKILLS[0]));
+    assert.equal(path.resolve(path.dirname(path.join(fakeHome, '.codex', 'skills', SKILLS[0])), skillLinkTarget), path.join(pkgDir(fakeHome), 'skills', SKILLS[0]));
     // A POSIX command shim exists on a stable, non-transient path.
     const shim = path.join(posixBinDir(fakeHome), 'agent-delegates');
     assert.equal(fs.existsSync(shim), true);
@@ -60,20 +63,66 @@ test('install: statusline and hook are on by default; --no-statusline/--no-hook 
   }
 });
 
-test('install --main codex: links only ~/.agents/skills, no statusline/hook', async () => {
+test('install --main codex: links only ~/.codex/skills (default CODEX_HOME), never ~/.agents/skills', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
   const log = [];
   await install({
-    home: fakeHome, main: 'codex', skipCliInstall: true, commandExists: () => true, log: line => log.push(line)
+    home: fakeHome, main: 'codex', skipCliInstall: true, commandExists: () => true, env: {}, log: line => log.push(line)
   });
   for (const skill of SKILLS) {
-    assert.equal(fs.lstatSync(path.join(fakeHome, '.agents', 'skills', skill)).isSymbolicLink(), true);
+    assert.equal(fs.lstatSync(path.join(fakeHome, '.codex', 'skills', skill)).isSymbolicLink(), true);
   }
+  assert.equal(fs.existsSync(path.join(fakeHome, '.agents', 'skills')), false);
   assert.equal(fs.existsSync(path.join(fakeHome, '.claude', 'skills')), false);
   assert.equal(fs.existsSync(path.join(fakeHome, '.cursor', 'skills')), false);
   assert.equal(fs.existsSync(path.join(fakeHome, '.claude', 'settings.json')), false);
   assert.equal(fs.existsSync(path.join(fakeHome, '.claude', 'agent-delegates-nudge.js')), false);
   assert.ok(log.some(line => /Skipping statusline\/hook/.test(line)));
+});
+
+test('install --main codex: honors CODEX_HOME when set, linking there instead of ~/.codex/skills', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-home-'));
+  await install({
+    home: fakeHome, main: 'codex', skipCliInstall: true, commandExists: () => true,
+    env: { CODEX_HOME: codexHome }, log() {}
+  });
+  for (const skill of SKILLS) {
+    assert.equal(fs.lstatSync(path.join(codexHome, 'skills', skill)).isSymbolicLink(), true);
+  }
+  assert.equal(fs.existsSync(path.join(fakeHome, '.codex', 'skills')), false);
+  assert.equal(fs.existsSync(path.join(fakeHome, '.agents', 'skills')), false);
+});
+
+test('install --uninstall: sweeps the legacy ~/.agents/skills codex dir from a pre-fix install, plus current dirs', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  // Simulate a pre-fix install: codex skill links live under the old ~/.agents/skills, pointing
+  // into our own pkgDir(home) — the sweep must remove these even though nothing currently
+  // installs there.
+  await install({ home: fakeHome, main: 'claude', skipCliInstall: true, commandExists: () => true, env: {}, log() {} });
+  const legacyRoot = path.join(fakeHome, '.agents', 'skills');
+  fs.mkdirSync(legacyRoot, { recursive: true });
+  for (const skill of SKILLS) {
+    fs.symlinkSync(path.join(pkgDir(fakeHome), 'skills', skill), path.join(legacyRoot, skill), 'dir');
+  }
+  await install({ home: fakeHome, uninstall: true, log() {} });
+  for (const skill of SKILLS) {
+    assert.equal(fs.existsSync(path.join(legacyRoot, skill)), false);
+    assert.equal(fs.existsSync(path.join(fakeHome, '.claude', 'skills', skill)), false);
+  }
+});
+
+test('removeManagedLink guard (via uninstall): a same-named symlink pointing outside our pkgDir is left alone', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  await install({ home: fakeHome, main: 'claude', skipCliInstall: true, commandExists: () => true, env: {}, log() {} });
+  // Replace one managed link with a foreign symlink pointing elsewhere entirely.
+  const foreignTarget = fs.mkdtempSync(path.join(os.tmpdir(), 'foreign-skill-'));
+  const linkPath = path.join(fakeHome, '.claude', 'skills', SKILLS[0]);
+  fs.unlinkSync(linkPath);
+  fs.symlinkSync(foreignTarget, linkPath, 'dir');
+  await install({ home: fakeHome, uninstall: true, log() {} });
+  assert.equal(fs.lstatSync(linkPath).isSymbolicLink(), true);
+  assert.equal(fs.readlinkSync(linkPath), foreignTarget);
 });
 
 test('install --main cursor: links only ~/.cursor/skills', async () => {

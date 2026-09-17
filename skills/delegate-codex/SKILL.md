@@ -46,8 +46,10 @@ Runs with `CODEX_HOME=~/.codex-fresh`: auth only, no user config, hooks, MCP,
 plugins, global AGENTS.md or memories. Input tokens: ~13k (vs ~92k with the
 user's full setup). Pass `--full` when the task needs user Codex skills or MCP;
 repeat `--full` on `resume` (threads live in the home they were created in).
-Still present: the skill catalog from `~/.agents/skills` (names only) and the
-repo's own `AGENTS.md`.
+Still present: the skill catalog from `$CODEX_HOME/skills` (i.e.
+`~/.codex-fresh/skills` in clean room; names only) and the repo's own
+`AGENTS.md`. (Codex loads skills from `$CODEX_HOME/skills` — confirmed via
+`codex --help` — never `~/.agents/skills`, which codex never reads.)
 
 ## Where the user sees it
 
@@ -74,7 +76,7 @@ The orchestrator drops a job file, spends no tokens watching, and gets
 | `codex exec` hangs, no output | stdin left open; launcher feeds via file. Manual call: add `</dev/null`. |
 | resume errors `unexpected argument '--color'` | `exec resume` accepts fewer flags; always pass the same `--cd` as the run. |
 | worker says file "absent" on resume | forgot `--cd`; it resumed in the orchestrator's cwd. |
-| `failed to load skill ...` on stderr | harmless; a broken skill in `~/.agents/skills`. |
+| `failed to load skill ...` on stderr | harmless; a broken skill in `$CODEX_HOME/skills`. |
 | ~30 s + 90k input tokens before first edit | `--full` loaded user's skills. Clean-room default avoids it. |
 | unknown model | slugs from `~/.codex/models_cache.json`. |
 | Codex cannot `git commit` | The sandbox mounts `.git` read-only. The orchestrator commits; brief the worker "do not commit". |
