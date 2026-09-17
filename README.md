@@ -332,17 +332,24 @@ entirely for any vendor.
 Status shows CLI, LEFT, and MODELS columns. Example:
 
 ```
-CLI     LEFT                                   MODELS
-claude  wk 62% · 5h 100%                      fable-5.1 opus-5 sonnet-5 haiku-4.5
-codex   wk 85% (reset 134h) · 5h 100%         gpt-5.6-luna gpt-5.6-terra gpt-5.6-sol gpt-6-astra
-agy     gemini wk 43% · claude/gpt wk 100%    gemini-3.8-flash{l/m/h} gemini-3.1-pro{l/m/h} ...
-grok    unknown (--probe-grok)                 grok-4.5 grok-4.6
+CLI     LEFT                                                    MODELS
+claude  wk 62% · 5h 100%                                       fable-5.1 opus-5 sonnet-5 haiku-4.5
+codex   wk 85% (reset 134h) · 5h 100%                          gpt-5.6-luna gpt-5.6-terra gpt-5.6-sol gpt-6-astra
+agy     gemini wk 43% · claude/gpt wk 100%                     gemini-3.8-flash{l/m/h} gemini-3.1-pro{l/m/h} ...
+grok    logged in · quota via --probe-grok                     grok-4.5 grok-4.6
+cursor  included 85% left · resets Oct 16 (auto 85% · api 91%) auto composer-2.5 ...
 ```
 
-Claude needs a statusline snapshot; Codex queries its local auth; agy uses
-`/usage` and `models`; Grok uses the last-402 marker; Cursor uses `cursor-agent status`;
-OpenCode uses auth-file presence plus `opencode models`. Credentials and email
-addresses are never displayed.
+Claude needs a statusline snapshot; Codex queries its local auth (`chatgpt.com/backend-api/wham/usage`);
+agy uses `/usage` and `models`; Grok uses the last-402 marker — there is no
+read-only account-balance endpoint to poll (only a real, billable call can
+confirm the weekly budget; see `--probe-grok`); Cursor calls the same
+Connect-RPC endpoint its own `/usage` TUI screen uses
+(`aiserver.v1.DashboardService/GetCurrentPeriodUsage` on `api2.cursor.sh`,
+plain JSON over HTTPS POST, bearer token from `~/.config/cursor/auth.json`) —
+falling back to `cursor-agent status`'s `logged in · no quota API` on any
+HTTP failure so the row never throws; OpenCode uses auth-file presence plus
+`opencode models`. Credentials and email addresses are never displayed.
 
 ## Auto routing and cross-vendor handoff
 
@@ -375,10 +382,12 @@ the other) is treated as usable for some vendors and unusable for others:
 | Vendor | Unknown-quota row text | Usable? |
 |--------|-------------------------|---------|
 | codex | `usage unavailable` | yes (unknown) |
-| grok | `unknown (--probe-grok)` | yes (unknown) |
-| opencode | `unknown` | yes (unknown) |
+| grok | `logged in · quota via --probe-grok` | yes (unknown) |
+| opencode | `logged in · no quota API` | yes (unknown) |
 | agy | `usage unavailable` / no gemini bucket | no (can't confirm) |
-| cursor | `unavailable` (anything but exact `ok`) | no (can't confirm) |
+| cursor | `logged in · no quota API` (no token, or the usage API was unreachable) | yes (unknown) |
+| cursor | `included N% left ...` with `N` confirmed | usable iff `N > 0` |
+| cursor | `unavailable` / `logged out` / `missing` | no (can't confirm) |
 
 **Hop rule: only quota exhaustion hops.** If the chosen vendor's run comes
 back exhausted (or fails for a quota-shaped reason — 429/402/rate-limit/quota

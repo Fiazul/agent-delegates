@@ -22,8 +22,10 @@ Critical work (`--critical`): none — cursor has no large tier and is refused o
 
 ## Commands
 
-Use `agent-delegates` when globally installed. Otherwise use
-`npx github:Fiazul/agent-delegates` in every command.
+If `agent-delegates` exits 127 (not installed globally), use
+`node ~/.agent-delegates/pkg/bin/cli.js` instead (Windows:
+`node %LOCALAPPDATA%\agent-delegates\pkg\bin\cli.js`). Never fall back to `npx` — it
+re-downloads the package every run.
 
 ```sh
 agent-delegates run cursor auto BRIEF.md --cd /path/to/repo --name my-task

@@ -79,6 +79,22 @@ node bin/cli.js handoff /path/to/out-dir codex terra --cd /path/to/repo   # cont
 ### Grok
 - HTTP 402 means weekly budget exhausted. The launcher stamps `~/.grok/.last_402`.
   Reroute to Antigravity or Codex.
+- Researched 2026-09-17 (strings/grep over the `grok` Rust binary): there is no read-only
+  account-balance/usage-quota HTTP endpoint. The TUI's `/usage` command reads *per-session token
+  usage* via an internal ACP method (`x.ai/session/usage`), not account-level budget. `grok`
+  status row therefore stays `logged in · quota via --probe-grok` until a real (billable) probe
+  call is made — do not add a free-quota check for Grok without a new confirmed endpoint.
+
+### Cursor
+- `cursor-agent` has no CLI flag for quota, but its TUI's `/usage` screen backs onto a
+  Connect-RPC service that also accepts plain JSON over HTTPS POST (no protobuf codec needed).
+  Confirmed live 2026-09-17: `POST https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage`,
+  body `{}`, header `Authorization: Bearer <accessToken>` (token from `~/.config/cursor/auth.json`,
+  key `accessToken`). Response: `{ billingCycleEnd, planUsage: { totalPercentUsed, autoPercentUsed,
+  apiPercentUsed, ... } }` — `totalPercentUsed` is the TUI's "Included X% used", `auto`/`api` are
+  the same breakdown. `lib/status.js`'s `cursorRow` calls this (via an injectable fetcher for
+  tests) and falls back to the old `logged in · no quota API` wording on any HTTP failure — it
+  never throws.
 
 ### General
 - Always pass `--cd` on `resume` — otherwise the worker resumes in the wrong directory.

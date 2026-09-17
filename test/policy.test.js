@@ -311,7 +311,7 @@ test('pick: critical work uses CRITICAL_TIER and skips vendors with no large tie
   const resetsAt = NOW + 6 * 86400;
   const rows = [
     ['agy', 'gemini wk 45% · claude/gpt wk 10%', '?'],
-    ['cursor', 'ok', '?']
+    ['cursor', 'logged in · no quota API', '?']
   ];
   const result = await pick({
     now: NOW, config: { ...DEFAULTS, priority: ['cursor', 'agy', 'codex', 'grok', 'opencode', 'claude'] },
@@ -338,7 +338,7 @@ test('pick: routeCheck itself downgrades to claude when literally no vendor has 
 
 test('pick: critical work with only small-tier vendors usable -> route none', async () => {
   const resetsAt = NOW + 6 * 86400;
-  const rows = [['cursor', 'ok', '?']];
+  const rows = [['cursor', 'logged in · no quota API', '?']];
   const result = await pick({
     now: NOW, config: { ...DEFAULTS, priority: ['cursor', 'claude'] },
     snapshot: snapshot({ wk: 30, resetsAt }), rows, critical: true

@@ -23,8 +23,10 @@ Critical work (`--critical`): only `opus` allowed.
 
 ## Commands
 
-Use `agent-delegates` when globally installed. Otherwise use
-`npx github:Fiazul/agent-delegates` in every command.
+If `agent-delegates` exits 127 (not installed globally), use
+`node ~/.agent-delegates/pkg/bin/cli.js` instead (Windows:
+`node %LOCALAPPDATA%\agent-delegates\pkg\bin\cli.js`). Never fall back to `npx` — it
+re-downloads the package every run.
 
 ```sh
 agent-delegates run claude sonnet BRIEF.md --cd /path/to/repo --name my-task

@@ -79,20 +79,30 @@ test('pickVendor: grok logged out / exhausted are unusable', () => {
   assert.equal(pickVendor([['grok', 'exhausted (402 on 2026-09-17)', 'grok-4.5']], ['grok']), null);
 });
 
-test('pickVendor: grok "ok" and "unknown (--probe-grok)" are usable', () => {
+test('pickVendor: grok "ok" and "logged in · quota via --probe-grok" are usable', () => {
   assert.equal(pickVendor([['grok', 'ok', 'grok-4.5']], ['grok']), 'grok');
-  assert.equal(pickVendor([['grok', 'unknown (--probe-grok)', 'grok-4.5']], ['grok']), 'grok');
+  assert.equal(pickVendor([['grok', 'logged in · quota via --probe-grok', 'grok-4.5']], ['grok']), 'grok');
 });
 
-test('pickVendor: cursor usable only when exactly "ok"', () => {
-  assert.equal(pickVendor([['cursor', 'ok', 'auto']], ['cursor']), 'cursor');
+test('pickVendor: cursor usable when exactly "logged in · no quota API" (unknown, no token/API unreachable)', () => {
+  assert.equal(pickVendor([['cursor', 'logged in · no quota API', 'auto']], ['cursor']), 'cursor');
   assert.equal(pickVendor([['cursor', 'logged out', 'auto']], ['cursor']), null);
   assert.equal(pickVendor([['cursor', 'unavailable', 'auto']], ['cursor']), null);
   assert.equal(pickVendor([['cursor', 'missing', 'auto']], ['cursor']), null);
 });
 
+test('pickVendor: cursor real-quota row is usable when included % left > 0', () => {
+  const row = 'included 85% left · resets Oct 16 (auto 85% · api 91%)';
+  assert.equal(pickVendor([['cursor', row, 'auto']], ['cursor']), 'cursor');
+});
+
+test('pickVendor: cursor real-quota row is unusable at included 0% left (exhausted)', () => {
+  const row = 'included 0% left · resets Oct 16 (auto 0% · api 0%)';
+  assert.equal(pickVendor([['cursor', row, 'auto']], ['cursor']), null);
+});
+
 test('pickVendor: opencode usable unless missing/logged out', () => {
-  assert.equal(pickVendor([['opencode', 'unknown', 'opencode/mimo-v2.5-free']], ['opencode']), 'opencode');
+  assert.equal(pickVendor([['opencode', 'logged in · no quota API', 'opencode/mimo-v2.5-free']], ['opencode']), 'opencode');
   assert.equal(pickVendor([['opencode', 'missing', 'opencode/mimo-v2.5-free']], ['opencode']), null);
   assert.equal(pickVendor([['opencode', 'logged out', 'opencode/mimo-v2.5-free']], ['opencode']), null);
 });
@@ -165,7 +175,7 @@ test('runAuto: maxHops respected (stops hopping after the cap even if still exha
     ['agy', 'gemini wk 45% · claude/gpt wk 10%', '?'],
     ['codex', 'wk 40% (reset 3h) · 5h 20%', '?'],
     ['grok', 'ok', '?'],
-    ['cursor', 'ok', '?']
+    ['cursor', 'logged in · no quota API', '?']
   ];
   const handoffCalls = [];
   const invoke = async () => ({ code: 1, outDir: '/out/agy-1', failed: true, exhausted: true, reason: 'quota exceeded' });
@@ -284,8 +294,8 @@ test('runAuto: critical work picks CRITICAL_TIER, skips vendors with no large ti
   const rows = [
     ['agy', 'gemini wk 45% · claude/gpt wk 10%', '?'],
     ['codex', 'wk 40% (reset 3h) · 5h 20%', '?'],
-    ['cursor', 'ok', '?'],
-    ['opencode', 'unknown', '?']
+    ['cursor', 'logged in · no quota API', '?'],
+    ['opencode', 'logged in · no quota API', '?']
   ];
   const invokeCalls = [];
   const invoke = async (mode, vendor, tier) => {
@@ -432,8 +442,8 @@ test('runAuto: no --cd inside a guarded directory still resolves via process.cwd
   try {
     const rows = [
       ['codex', 'wk 40% (reset 3h) · 5h 20%', '?'],
-      ['cursor', 'ok', '?'],
-      ['opencode', 'unknown', '?']
+      ['cursor', 'logged in · no quota API', '?'],
+      ['opencode', 'logged in · no quota API', '?']
     ];
     const invokeCalls = [];
     const invoke = async (mode, vendor, tier) => {

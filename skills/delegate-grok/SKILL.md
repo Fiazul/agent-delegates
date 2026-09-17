@@ -21,8 +21,10 @@ Critical work (`--critical`): only `best` allowed.
 
 ## Commands
 
-Use `agent-delegates` when globally installed. Otherwise use
-`npx github:Fiazul/agent-delegates` in every command.
+If `agent-delegates` exits 127 (not installed globally), use
+`node ~/.agent-delegates/pkg/bin/cli.js` instead (Windows:
+`node %LOCALAPPDATA%\agent-delegates\pkg\bin\cli.js`). Never fall back to `npx` — it
+re-downloads the package every run.
 
 ```sh
 agent-delegates run grok best BRIEF.md --cd /path/to/repo --name my-task
@@ -59,7 +61,7 @@ No display → tmux fallback; `DELEGATE_NO_WINDOW=1` → plain inline run.
 | Symptom | Cause / fix |
 |---------|-------------|
 | `API error (status 402 ...) Grok Build usage balance exhausted` | Weekly budget exhausted. The launcher stamps `~/.grok/.last_402`. Reroute to Antigravity or Codex. |
-| `agent-delegates status` shows `unknown (--probe-grok)` | Add `--probe-grok` to make a tiny paid call that refreshes the status. |
+| `agent-delegates status` shows `logged in · quota via --probe-grok` | Add `--probe-grok` to make a tiny paid call that refreshes the status. |
 | JSON `session_id` field name uncertain | If resume fails, check `events.jsonl` for the actual field name (`session_id` / `sessionId`). The launcher tries all variants. |
 
 Clean room: `~/.grok/AGENTS.md` and `~/.grok/config.toml` load by default.
