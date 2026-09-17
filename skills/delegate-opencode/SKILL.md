@@ -9,6 +9,8 @@ For any orchestrator that wants to delegate to OpenCode.
 Same brief/acceptance/review rules as all other vendor workers.
 The launcher prepends the standard worker preamble.
 
+Critical work (`--critical`): none — opencode has no large tier and is refused outright unless `--allow-small`.
+
 ## Tier ladder
 
 | Tier | OpenCode model | Use for |

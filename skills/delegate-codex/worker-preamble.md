@@ -9,6 +9,7 @@ Rules:
 - Never read or print .env values or secrets.
 - Fix categories, not instances: a reported bug represents a defect class; audit every site where it can occur and report a per-site verdict.
 - If scope blows past the brief, stop and return a handoff: done / remaining / decisions / files touched.
+- If the brief touches production systems, live data, deploys, or secrets: never perform an irreversible action (delete, migrate, deploy, rotate keys) without it being explicitly listed in the brief; if unsure, stop and ask under OPEN QUESTIONS.
 
 Final message MUST have these sections, in order: DONE (what changed), ACCEPTANCE (each criterion pass/fail), VERIFICATION (test/lint commands + summarized output), FILES TOUCHED, OPEN QUESTIONS.
 

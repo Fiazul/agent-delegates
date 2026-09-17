@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { TIER_MAPS, canonicalVendor, resolveModel } = require('../lib/models');
+const { CRITICAL_TIER, TIER_CLASS, TIER_MAPS, canonicalVendor, resolveModel, tierClass } = require('../lib/models');
 
 test('tier maps cover every vendor and documented tier', () => {
   assert.deepEqual(TIER_MAPS.codex, {
@@ -25,4 +25,31 @@ test('tier maps cover every vendor and documented tier', () => {
   assert.equal(resolveModel('cursor', 'composer-2.5-fast'), 'composer-2.5-fast');
   assert.equal(resolveModel('opencode', 'opencode/big-pickle'), 'opencode/big-pickle');
   assert.throws(() => resolveModel('codex', 'unknown'), /unknown codex tier/);
+});
+
+test('tierClass classifies every documented tier per vendor', () => {
+  assert.deepEqual(TIER_CLASS.codex, { luna: 'small', terra: 'standard', sol: 'large', astra: 'large' });
+  assert.deepEqual(TIER_CLASS.agy, { lite: 'small', flash: 'small', pro: 'standard', sonnet: 'standard', opus: 'large' });
+  assert.deepEqual(TIER_CLASS.grok, { fast: 'small', best: 'large' });
+  assert.deepEqual(TIER_CLASS.claude, { haiku: 'small', sonnet: 'standard', opus: 'large' });
+  assert.deepEqual(TIER_CLASS.cursor, { auto: 'small', composer: 'standard' });
+  assert.deepEqual(TIER_CLASS.opencode, { free: 'small', go: 'small' });
+
+  for (const vendor of Object.keys(TIER_CLASS)) {
+    for (const tier of Object.keys(TIER_CLASS[vendor])) {
+      assert.equal(tierClass(vendor, tier), TIER_CLASS[vendor][tier]);
+    }
+  }
+
+  assert.equal(tierClass('antigravity', 'flash'), 'small');
+  assert.equal(tierClass('codex', 'gpt-5.6-sol'), 'large');
+  assert.equal(tierClass('claude', 'claude-sonnet-5'), 'standard');
+  assert.equal(tierClass('codex', 'some-unknown-slug'), 'unknown');
+  assert.equal(tierClass('unknownvendor', 'x'), 'unknown');
+});
+
+test('CRITICAL_TIER names the recommended tier per vendor', () => {
+  assert.deepEqual(CRITICAL_TIER, {
+    codex: 'sol', agy: 'opus', grok: 'best', claude: 'opus', cursor: null, opencode: null
+  });
 });

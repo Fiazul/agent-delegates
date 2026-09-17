@@ -9,6 +9,8 @@ For a Codex, Antigravity, or Grok orchestrator that wants to delegate to
 Claude Code. Same brief/acceptance/review rules as all other vendor workers.
 The launcher prepends the standard worker preamble.
 
+Critical work (`--critical`): only `opus` allowed.
+
 ## Tier ladder
 
 | Tier | Claude model | Use for |

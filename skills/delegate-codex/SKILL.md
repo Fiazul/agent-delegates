@@ -9,6 +9,8 @@ Codex-side twin of a Claude subagent. Same orchestration rules: brief with
 constraints + acceptance criteria, worker is sole executor, review the diff
 afterwards. The launcher prepends the standard worker preamble.
 
+Critical work (`--critical`): only `sol`/`astra` allowed.
+
 ## Tier ladder (orchestrator picks)
 
 | Tier | Codex model | ~Claude | Use for |

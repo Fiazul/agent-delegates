@@ -41,11 +41,12 @@ ran out of quota mid-review. Open items, in priority order:
    it actually hands off (prints `AUTO: <vendor> exhausted → handing off to <next>`, second job
    directory has a continuation brief built by `lib/handoff.js`), and once against a non-quota
    failure (bad brief) to confirm it does NOT hop.
-8. **`DEFAULT_TIER` duplicated** in `lib/handoff.js` and `lib/route.js` — move both copies to a
-   single source of truth in `lib/models.js` (it already owns `TIER_MAPS`/`resolveModel`).
-9. **`run --cd X auto brief` positional quirk**: `--cd` before the `auto` subcommand vs after
-   the brief file may parse differently depending on how `bin/cli.js` splits flags from
-   positionals for the `run` command — verify/document the accepted flag order for `run auto`.
+8. ~~**`DEFAULT_TIER` duplicated** in `lib/handoff.js` and `lib/route.js`.~~ **DONE
+   (2026-09-17).** Moved to a single `DEFAULT_TIER` export in `lib/models.js` (alongside
+   `TIER_MAPS`/`CRITICAL_TIER`/`resolveModel`); both modules import it instead of redefining it.
+9. ~~**`run --cd X auto brief` positional quirk**.~~ **DONE (2026-09-17).** `bin/cli.js` now
+   accepts `auto` anywhere in the `run` positionals — `run --cd X auto brief.md`,
+   `run auto brief.md --cd X`, and `run auto --cd X brief.md` all parse the same way.
 10. **Live smoke of a real hop still pending** (see item 7) — this is the same gap, tracked here
     too since it blocks trusting `run auto` in production use.
 11. **`DELEGATE_WORKER=1` hard guard** planned: a worker launched by `agent-delegates` should not
@@ -56,3 +57,22 @@ ran out of quota mid-review. Open items, in priority order:
 13. **Skill slimming + `--quiet` JSON output planned** — trim the skill docs and add a
     machine-readable `--quiet`/JSON mode to `status`/`run` for scripting (e.g. `run auto` calling
     itself, or an outer orchestrator polling status without parsing the table).
+14. ~~**Dynamic (pace-based) routing policy shipped.**~~ **DONE (2026-09-17, brief W3).** Added
+    `lib/policy.js` (`loadConfig`/`decide`, pure, unit-tested) replacing the fixed-40%-in-a-
+    private-hook rule: `mode: "pace"` compares weekly usage% against % of the week elapsed (+
+    slack), with a 5-hour cap and a hard cap as escape hatches, falling back to `mode: "fixed"`
+    when `resets_at` is unavailable; config at `~/.config/delegates/routing.json` /
+    `%APPDATA%/delegates/routing.json`. `route-check [--json] [--self claude]` reports the
+    decision without doing work. `extras/delegate-nudge.js` is a shipped `UserPromptSubmit` hook
+    (installed by default via `lib/install.js` `installHook`/`uninstallHook`, opt out with
+    `--no-hook`; `--no-statusline` opts out of the statusline, also now default-on) that injects
+    a routing reminder into context only when the policy says `external`. `lib/route.js`
+    `runAuto` now consults the same policy before picking a vendor (`respectPolicy` option,
+    default true) and keeps `claude` on top of the try-order when the policy says stay. Docs:
+    README "When does the orchestrator delegate? (routing policy)", `skills/delegates/SKILL.md`,
+    `extras/claude-routing-rule.md` updated off the fixed-40% wording. Only the orchestrator
+    reads any of this — workers never see it, unchanged.
+15. **Codex-as-orchestrator policy (`--self codex`) pending** — `route-check --self` currently
+    only supports `claude` (reports "unsupported, reports claude policy" for anything else); a
+    Codex-orchestrated setup needs its own quota snapshot shape and probably its own
+    `mode`/threshold defaults before `--self codex` can report anything real.

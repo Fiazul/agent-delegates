@@ -2,6 +2,12 @@
   "name": "agent-delegates",
   "version": "1.0.0",
   "description": "Cross-vendor terminal workers for Codex, Antigravity, Grok, Claude Code, Cursor, and OpenCode",
+  "license": "MIT",
+  "author": "Fiazul Haque",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fiazul/agent-delegates.git"
+  },
   "type": "commonjs",
   "bin": {
     "agent-delegates": "bin/cli.js",
@@ -12,7 +18,8 @@
     "lib/",
     "skills/",
     "extras/",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=18"

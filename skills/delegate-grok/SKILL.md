@@ -8,6 +8,8 @@ description: Use when delegating a task to a Grok Build (xAI) worker via the gro
 Third-vendor twin of a Claude subagent. Same brief/acceptance/review rules.
 The launcher prepends the standard worker preamble.
 
+Critical work (`--critical`): only `best` allowed.
+
 ## Tier ladder
 
 | Tier | Grok model | ~Claude | Use for |

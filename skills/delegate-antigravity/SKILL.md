@@ -9,6 +9,8 @@ Free-tier twin of a Claude subagent. Same brief/acceptance/review rules.
 The launcher prepends the standard worker preamble and adds an absolute
 `WORKING DIRECTORY` header to the prompt.
 
+Critical work (`--critical`): only `opus` allowed.
+
 ## Tier ladder
 
 | Tier | agy model | ~Claude | Use for |

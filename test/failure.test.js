@@ -285,6 +285,11 @@ test('invoke() classifies a fake grok 402 response as failed, writes exit=1, and
   fs.chmodSync(fakeGrok, 0o755);
   const scratchHome = path.join(dir, 'home');
   fs.mkdirSync(scratchHome, { recursive: true });
+  // Pre-spawn preflight now checks ~/.grok/auth.json before invoke() submits anything — give
+  // the scratch HOME a logged-in-looking auth file so this test still exercises the 402
+  // classification path (and not the unrelated "not logged in" guard).
+  fs.mkdirSync(path.join(scratchHome, '.grok'), { recursive: true });
+  fs.writeFileSync(path.join(scratchHome, '.grok', 'auth.json'), '{}');
   const cwd = path.join(dir, 'cwd');
   fs.mkdirSync(cwd);
   const briefFile = path.join(dir, 'brief.md');
@@ -318,4 +323,19 @@ test('invoke() classifies a fake grok 402 response as failed, writes exit=1, and
       if (saved[key] == null) delete process.env[key]; else process.env[key] = saved[key];
     }
   }
+});
+
+test('classifyFailure treats exitCode 124 as a cross-vendor timeout, before any vendor-specific parsing', () => {
+  for (const vendor of ['codex', 'agy', 'grok', 'claude', 'cursor', 'opencode']) {
+    const result = classifyFailure(vendor, { events: [], raw: '', stderr: '', exitCode: 124, text: '', timeoutMin: 90 });
+    assert.equal(result.failed, true);
+    assert.equal(result.exhausted, false);
+    assert.match(result.reason, /timed out after 90 min/);
+    assert.match(result.reason, /DELEGATE_JOB_TIMEOUT_MIN/);
+    assert.match(result.reason, /--timeout/);
+  }
+  // Missing timeoutMin still produces a sane (if vague) reason, never a crash.
+  const noMin = classifyFailure('codex', { events: [], raw: '', stderr: '', exitCode: 124, text: '' });
+  assert.equal(noMin.failed, true);
+  assert.match(noMin.reason, /timed out after N min/);
 });

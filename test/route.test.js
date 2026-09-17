@@ -4,6 +4,9 @@
 // runAuto() (quota-exhaustion-only hop logic, invoke/handoff injected so no live vendor calls).
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 const { pickVendor, runAuto } = require('../lib/route');
 
@@ -220,7 +223,231 @@ test('runAuto: nothing usable -> throws with tried list', async () => {
     ['codex', 'logged out', '?']
   ];
   await assert.rejects(
-    () => runAuto('brief.md', { rows, priority: 'agy,codex', invoke: async () => ({}) }, ''),
+    () => runAuto('brief.md', { rows, priority: 'agy,codex', invoke: async () => ({}), respectPolicy: false }, ''),
     /no vendor with quota; tried: agy, codex/
   );
+});
+
+test('runAuto: policy says stay on claude -> claude moved to front of priority', async () => {
+  const rows = [
+    ['agy', 'gemini wk 45% · claude/gpt wk 10%', '?'],
+    ['claude', 'wk 30% · 5h 12%', 'fable-5.1']
+  ];
+  const invokeCalls = [];
+  const invoke = async (mode, vendor, tier) => {
+    invokeCalls.push(vendor);
+    return { code: 0, outDir: '/out/1', failed: false, exhausted: false };
+  };
+  const result = await runAuto('brief.md', {
+    rows,
+    priority: 'agy,claude',
+    invoke,
+    decide: () => ({ route: 'claude', reason: 'wk 30% used vs 14% of week elapsed' })
+  }, '');
+  assert.equal(result.vendor, 'claude');
+  assert.equal(invokeCalls[0], 'claude');
+});
+
+test('runAuto: policy says external -> priority unchanged, default vendor wins', async () => {
+  const rows = [['agy', 'gemini wk 45% · claude/gpt wk 10%', '?']];
+  const invokeCalls = [];
+  const invoke = async (mode, vendor) => {
+    invokeCalls.push(vendor);
+    return { code: 0, outDir: '/out/1', failed: false, exhausted: false };
+  };
+  const result = await runAuto('brief.md', {
+    rows,
+    priority: 'agy,codex',
+    invoke,
+    decide: () => ({ route: 'external', reason: 'wk 60% used vs 14% of week elapsed' })
+  }, '');
+  assert.equal(result.vendor, 'agy');
+  assert.equal(invokeCalls[0], 'agy');
+});
+
+test('runAuto: respectPolicy false skips the decide call entirely', async () => {
+  const rows = [['agy', 'gemini wk 45% · claude/gpt wk 10%', '?']];
+  let decideCalled = false;
+  const invoke = async (mode, vendor) => ({ code: 0, outDir: '/out/1', failed: false, exhausted: false, vendor });
+  const result = await runAuto('brief.md', {
+    rows,
+    priority: 'agy',
+    invoke,
+    respectPolicy: false,
+    decide: () => { decideCalled = true; return { route: 'claude' }; }
+  }, '');
+  assert.equal(decideCalled, false);
+  assert.equal(result.vendor, 'agy');
+});
+
+test('runAuto: critical work picks CRITICAL_TIER, skips vendors with no large tier', async () => {
+  const rows = [
+    ['agy', 'gemini wk 45% · claude/gpt wk 10%', '?'],
+    ['codex', 'wk 40% (reset 3h) · 5h 20%', '?'],
+    ['cursor', 'ok', '?'],
+    ['opencode', 'unknown', '?']
+  ];
+  const invokeCalls = [];
+  const invoke = async (mode, vendor, tier) => {
+    invokeCalls.push({ vendor, tier });
+    return { code: 1, outDir: '/out/1', failed: true, exhausted: true, reason: 'RESOURCE_EXHAUSTED (429)' };
+  };
+  const handoffCalls = [];
+  const handoff = async (outDir, targetVendor, tier) => {
+    handoffCalls.push({ targetVendor, tier });
+    return { code: 0, outDir: '/out/2', failed: false, exhausted: false };
+  };
+  const result = await runAuto('brief.md', {
+    rows,
+    priority: 'agy,codex,cursor,opencode',
+    invoke,
+    handoff,
+    respectPolicy: false,
+    assess: () => ({ critical: true, reasons: ['--critical flag set'] })
+  }, '');
+  assert.equal(invokeCalls[0].vendor, 'agy');
+  assert.equal(invokeCalls[0].tier, 'opus'); // CRITICAL_TIER.agy
+  assert.equal(handoffCalls[0].targetVendor, 'codex');
+  assert.equal(handoffCalls[0].tier, 'sol'); // CRITICAL_TIER.codex
+  // cursor/opencode were never tried — both filtered out for having no large tier
+  assert.equal(result.attempts.some(a => a.vendor === 'cursor' || a.vendor === 'opencode'), false);
+});
+
+test('runAuto: critical work with --allow-small behaves like non-critical (default tiers, no skipping)', async () => {
+  const rows = [['agy', 'gemini wk 45% · claude/gpt wk 10%', '?']];
+  const invokeCalls = [];
+  const invoke = async (mode, vendor, tier) => {
+    invokeCalls.push({ vendor, tier });
+    return { code: 0, outDir: '/out/1', failed: false, exhausted: false };
+  };
+  await runAuto('brief.md', {
+    rows,
+    priority: 'agy',
+    invoke,
+    respectPolicy: false,
+    allowSmall: true,
+    assess: () => ({ critical: true, reasons: ['--critical flag set'] })
+  }, '');
+  assert.equal(invokeCalls[0].tier, 'flash'); // DEFAULT_TIER.agy, unchanged
+});
+
+test('runAuto: non-critical work uses default tiers unchanged', async () => {
+  const rows = [['agy', 'gemini wk 45% · claude/gpt wk 10%', '?']];
+  const invokeCalls = [];
+  const invoke = async (mode, vendor, tier) => {
+    invokeCalls.push({ vendor, tier });
+    return { code: 0, outDir: '/out/1', failed: false, exhausted: false };
+  };
+  await runAuto('brief.md', {
+    rows,
+    priority: 'agy',
+    invoke,
+    respectPolicy: false,
+    assess: () => ({ critical: false, reasons: [] })
+  }, '');
+  assert.equal(invokeCalls[0].tier, 'flash');
+});
+
+test('runAuto: suspected-only (keyword hint, not critical) prints CRITICAL? once and uses default tiers', async () => {
+  const rows = [['agy', 'gemini wk 45% · claude/gpt wk 10%', '?']];
+  const invokeCalls = [];
+  const invoke = async (mode, vendor, tier) => {
+    invokeCalls.push({ vendor, tier });
+    return { code: 0, outDir: '/out/1', failed: false, exhausted: false };
+  };
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  try {
+    await runAuto('brief.md', {
+      rows,
+      priority: 'agy',
+      invoke,
+      respectPolicy: false,
+      assess: () => ({ critical: false, suspected: true, reasons: [], hints: ['heuristic: keyword "deploy" in brief'] })
+    }, '');
+  } finally {
+    console.log = originalLog;
+  }
+  // Default tier (no upgrade), and no hard CRITICAL line — only the advisory CRITICAL? print.
+  assert.equal(invokeCalls[0].tier, 'flash');
+  assert.equal(logs.filter(l => l.includes('CRITICAL?')).length, 1, JSON.stringify(logs));
+  assert.ok(logs.some(l => l.includes('heuristic: keyword "deploy" in brief')), JSON.stringify(logs));
+  assert.ok(!logs.some(l => /\bCRITICAL:/.test(l)), 'suspected-only must never print the hard CRITICAL: line');
+});
+
+// M2: runAuto used the REAL assessCriticality (not an injected `assess`) here on purpose — this
+// is an integration check that lib/route.js's runAuto and lib/guard.js's assessCriticality
+// resolve a relative --cd the same way lib/runner.js's invoke() does, since assessCriticality
+// itself now does the path.resolve(), not each caller individually.
+test('runAuto: a relative --cd ("." ) into a guard.paths-guarded directory resolves and picks CRITICAL_TIER, never throws (M2)', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-route-guard-home-'));
+  const guardedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-route-guarded-'));
+  const configDir = path.join(fakeHome, '.config', 'delegates');
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.writeFileSync(path.join(configDir, 'routing.json'), JSON.stringify({ guard: { paths: [`${guardedRoot}/**`] } }));
+
+  const savedHome = process.env.HOME;
+  const savedProfile = process.env.USERPROFILE;
+  const savedCwd = process.cwd();
+  process.env.HOME = fakeHome;
+  process.env.USERPROFILE = fakeHome;
+  process.chdir(guardedRoot);
+  try {
+    const rows = [['codex', 'wk 40% (reset 3h) · 5h 20%', '?']];
+    const invokeCalls = [];
+    const invoke = async (mode, vendor, tier) => {
+      invokeCalls.push({ vendor, tier });
+      return { code: 0, outDir: '/out/1', failed: false, exhausted: false };
+    };
+    const result = await runAuto('brief.md', { rows, priority: 'codex', invoke, respectPolicy: false, cd: '.' }, '');
+    assert.equal(result.code, 0);
+    assert.equal(invokeCalls.length, 1);
+    assert.equal(invokeCalls[0].vendor, 'codex');
+    assert.equal(invokeCalls[0].tier, 'sol'); // CRITICAL_TIER.codex — proves critical was detected
+  } finally {
+    process.chdir(savedCwd);
+    if (savedHome == null) delete process.env.HOME; else process.env.HOME = savedHome;
+    if (savedProfile == null) delete process.env.USERPROFILE; else process.env.USERPROFILE = savedProfile;
+  }
+});
+
+// F1: with no --cd at all, runAuto passes cd: '' straight through to the real assessCriticality,
+// which must now default the empty cwd to process.cwd() itself (rather than each caller
+// pre-resolving). Run from inside a guard.paths-guarded directory with no --cd: still detected
+// critical, cursor/opencode still dropped for having no large tier, CRITICAL_TIER still picked.
+test('runAuto: no --cd inside a guarded directory still resolves via process.cwd() and picks CRITICAL_TIER, drops cursor/opencode (F1)', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-route-guard-home-'));
+  const guardedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-route-guarded-'));
+  const configDir = path.join(fakeHome, '.config', 'delegates');
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.writeFileSync(path.join(configDir, 'routing.json'), JSON.stringify({ guard: { paths: [`${guardedRoot}/**`] } }));
+
+  const savedHome = process.env.HOME;
+  const savedProfile = process.env.USERPROFILE;
+  const savedCwd = process.cwd();
+  process.env.HOME = fakeHome;
+  process.env.USERPROFILE = fakeHome;
+  process.chdir(guardedRoot);
+  try {
+    const rows = [
+      ['codex', 'wk 40% (reset 3h) · 5h 20%', '?'],
+      ['cursor', 'ok', '?'],
+      ['opencode', 'unknown', '?']
+    ];
+    const invokeCalls = [];
+    const invoke = async (mode, vendor, tier) => {
+      invokeCalls.push({ vendor, tier });
+      return { code: 0, outDir: '/out/1', failed: false, exhausted: false };
+    };
+    const result = await runAuto('brief.md', { rows, priority: 'codex,cursor,opencode', invoke, respectPolicy: false }, '');
+    assert.equal(result.code, 0);
+    assert.equal(invokeCalls.length, 1);
+    assert.equal(invokeCalls[0].tier, 'sol'); // CRITICAL_TIER.codex — proves critical was detected with no --cd
+    assert.equal(result.attempts.some(a => a.vendor === 'cursor' || a.vendor === 'opencode'), false);
+  } finally {
+    process.chdir(savedCwd);
+    if (savedHome == null) delete process.env.HOME; else process.env.HOME = savedHome;
+    if (savedProfile == null) delete process.env.USERPROFILE; else process.env.USERPROFILE = savedProfile;
+  }
 });

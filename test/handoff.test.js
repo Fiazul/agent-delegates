@@ -124,3 +124,73 @@ test('handoff() honors an explicit tier over the vendor default', async () => {
   await handoff(jobDir, 'codex', 'sol', { invoke: stubInvoke });
   assert.equal(received.tier, 'sol');
 });
+
+test('handoff() picks CRITICAL_TIER for the target when the source meta.json was critical', async () => {
+  const jobDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-handoff-critical-'));
+  copyFixture(jobDir);
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-handoff-critical-cwd-'));
+  const meta = JSON.parse(fs.readFileSync(path.join(jobDir, 'meta.json'), 'utf8'));
+  meta.cwd = cwd;
+  meta.critical = true;
+  fs.writeFileSync(path.join(jobDir, 'meta.json'), JSON.stringify(meta));
+
+  let received = null;
+  const stubInvoke = async (mode, vendor, tier, briefSource, options, stdinText) => {
+    received = { vendor, tier, options };
+    return { code: 0, outDir: '/tmp/fake-out-dir', failed: false };
+  };
+
+  await handoff(jobDir, 'agy', undefined, { invoke: stubInvoke });
+
+  assert.equal(received.tier, 'opus'); // CRITICAL_TIER.agy
+  assert.equal(received.options.critical, true);
+});
+
+test('handoff() to a vendor with no large tier throws on critical work unless --allow-small', async () => {
+  const jobDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-handoff-critical-cursor-'));
+  copyFixture(jobDir);
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-handoff-critical-cursor-cwd-'));
+  const meta = JSON.parse(fs.readFileSync(path.join(jobDir, 'meta.json'), 'utf8'));
+  meta.cwd = cwd;
+  meta.critical = true;
+  fs.writeFileSync(path.join(jobDir, 'meta.json'), JSON.stringify(meta));
+
+  const stubInvoke = async () => ({ code: 0, outDir: '/tmp/fake-out-dir', failed: false });
+
+  await assert.rejects(
+    () => handoff(jobDir, 'cursor', undefined, { invoke: stubInvoke }),
+    /no large-model tier/
+  );
+
+  // --allow-small overrides: falls back to cursor's DEFAULT_TIER and still marks critical
+  let received = null;
+  const stubInvoke2 = async (mode, vendor, tier, briefSource, options) => {
+    received = { vendor, tier, options };
+    return { code: 0, outDir: '/tmp/fake-out-dir', failed: false };
+  };
+  await handoff(jobDir, 'cursor', undefined, { invoke: stubInvoke2, allowSmall: true });
+  assert.equal(received.tier, DEFAULT_TIER.cursor);
+  assert.equal(received.options.critical, true);
+});
+
+test('handoff() honors an explicit tier even when the source job was critical', async () => {
+  const jobDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-handoff-critical-explicit-'));
+  copyFixture(jobDir);
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-handoff-critical-explicit-cwd-'));
+  const meta = JSON.parse(fs.readFileSync(path.join(jobDir, 'meta.json'), 'utf8'));
+  meta.cwd = cwd;
+  meta.critical = true;
+  fs.writeFileSync(path.join(jobDir, 'meta.json'), JSON.stringify(meta));
+
+  let received = null;
+  const stubInvoke = async (mode, vendor, tier, briefSource, options) => {
+    received = { vendor, tier, options };
+    return { code: 0, outDir: '/tmp/fake-out-dir', failed: false };
+  };
+  await handoff(jobDir, 'agy', 'lite', { invoke: stubInvoke });
+  assert.equal(received.tier, 'lite');
+  // Regression: critical:true must reach invoke() on every branch, including this one where an
+  // explicit tier was already supplied — losing it here would let a later hop's guard treat
+  // continued critical work as ordinary work.
+  assert.equal(received.options.critical, true);
+});

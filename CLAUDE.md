@@ -11,14 +11,20 @@ in a visible console, and collects `exit` + `last.md` when it finishes.
 
 ```
 bin/cli.js          CLI entry point: parses commands, dispatches
-  lib/runner.js     invoke() builds vendor-specific CLI args, submits job, parses result
+  lib/runner.js     invoke() builds vendor-specific CLI args, submits job, parses result, runs the guard
   lib/console.js    job queue: one console per vendor/name, spawns terminal windows
   lib/renderer.js   EventRenderer: renders vendor-specific streaming events to the console
-  lib/models.js     tier → model slug maps, canonicalVendor(), resolveModel()
-  lib/status.js     quota probes: claude, codex, agy, grok rows
-  lib/install.js    skill symlinks, statusline helper, shell aliases
+  lib/models.js     tier → model slug maps, CRITICAL_TIER, DEFAULT_TIER, canonicalVendor(), resolveModel()
+  lib/status.js     quota probes: claude, codex, agy, grok, cursor, opencode rows; preflight() login check
+  lib/failure.js    classifyFailure(): per-vendor quota/auth/timeout classification from a raw event stream
+  lib/policy.js     pace-based routing decide()/routeCheck()/pick(): should the orchestrator go external?
+  lib/guard.js      critical-work guard: assessCriticality(), enforce() (refuse small tiers), permissionMode()
+  lib/route.js      run auto: pickVendor() from status rows, quota-exhaustion-only hop loop
+  lib/handoff.js    builds a continuation brief from a finished job dir and fires it at another vendor
+  lib/install.js    skill symlinks, statusline + routing-nudge hook install/uninstall, shell aliases
   lib/util.js       homeDir, outputRoot, timestamp, readJson, shellQuote
   lib/process.js    cross-platform spawn wrapper
+extras/delegate-nudge.js  UserPromptSubmit + PreToolUse hook implementation (exports main() for the installed stub)
 ```
 
 One reusable window per vendor/name. Console directories live at
@@ -32,10 +38,14 @@ Each job output: `<DELEGATE_OUT>/<name>-<ts>/` with `brief.md`, `prompt.md`,
 ```sh
 npm test                                    # unit tests, must stay green
 node bin/cli.js --help                      # show all commands and flags
-node bin/cli.js status                      # quota table (no vendor calls needed for claude/codex)
+node bin/cli.js status                      # quota table, always probes vendors and refreshes the rows cache
 node bin/cli.js run codex terra BRIEF.md --cd /path/to/repo
 node bin/cli.js run agy flash BRIEF.md --cd /path/to/repo
 DELEGATE_NO_WINDOW=1 node bin/cli.js run codex luna BRIEF.md --cd /path/to/repo  # inline, no window
+node bin/cli.js route-check --json                       # routing decision; reads cached rows.json (<10min old) or probes and refreshes it; --probe forces a probe
+node bin/cli.js pick --json                               # route-check + the actual vendor/tier/command to run
+node bin/cli.js run auto BRIEF.md --cd /path/to/repo       # policy-aware, picks a vendor and hands off on exhaustion
+node bin/cli.js handoff /path/to/out-dir codex terra --cd /path/to/repo   # continuation brief to another vendor
 ```
 
 ## Decisions that must not be undone
@@ -73,3 +83,24 @@ DELEGATE_NO_WINDOW=1 node bin/cli.js run codex luna BRIEF.md --cd /path/to/repo 
 - Always pass `--cd` on `resume` — otherwise the worker resumes in the wrong directory.
 - Verify from artifact state (git status, file mtimes), not the worker's narrative.
 - `DELEGATE_NO_WINDOW=1` runs inline when no display is available.
+- Every `run`/`resume` job has a 90-minute default timeout (`--timeout MIN` /
+  `DELEGATE_JOB_TIMEOUT_MIN`); a killed job exits 124 and is classified "timed out" like any
+  other failure — it does not trigger a `run auto` hop.
+- The critical-work guard's keyword heuristic (brief text matched against `routing.json`'s
+  `guard.keywords`/the built-in default list) only **warns** (`CRITICAL?`) — it never refuses a
+  small/standard tier by itself. Only an explicit `--critical` flag or a `guard.paths` match
+  against `--cd`/`--add-dir` actually refuses. `resume` never refuses either way (the model was
+  fixed at thread creation) — it only warns.
+- `agent-delegates install` edits `~/.claude/settings.json` (statusLine + two hooks, on by
+  default) — it always backs up the existing file to `settings.json.bak-<timestamp>` first, and
+  merges rather than replaces (existing hooks/keys survive). A malformed existing
+  `settings.json` makes `install` fail loudly before touching anything, rather than guessing.
+- `route-check`/`pick`/`run auto` read a vendor-status cache at `~/.cache/delegates/rows.json`
+  (`%LOCALAPPDATA%/delegates/rows.json` on Windows) when younger than `rowsTtlMinutes` in
+  `routing.json` (default 10 min), otherwise they probe and refresh it; `--probe` forces a fresh
+  probe. `status` always probes and refreshes the cache regardless of age. None of these are
+  "no vendor calls" operations — they just avoid redundant probes within the TTL window.
+- Cursor's command is `cursor-agent` everywhere (never the bare `agent` name, which collides
+  with Grok's own `agent` alias — see README.md "Cursor and Grok both install `agent`"); the
+  installer's Cursor-presence check and the login preflight hint (`cursor-agent login`) both go
+  through the same resolver as job invocation.

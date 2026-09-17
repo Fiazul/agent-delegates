@@ -1,6 +1,6 @@
 ---
 name: delegate-cursor
-description: Use when delegating a task to a Cursor Agent CLI worker — user says "cursor", "use cursor", "composer", or wants a Cursor-side second opinion. Runs non-interactively via `agent -p`; binary is `agent`, vendor id is `cursor`.
+description: Use when delegating a task to a Cursor Agent CLI worker — user says "cursor", "use cursor", "composer", or wants a Cursor-side second opinion. Runs non-interactively via `cursor-agent -p`; binary is `cursor-agent`, vendor id is `cursor`. (Cursor also installs a plain `agent` alias, which collides with Grok's — this tool never calls it; see README.md "Cursor and Grok both install `agent`".)
 ---
 
 # Delegate to Cursor Agent
@@ -9,6 +9,8 @@ For any orchestrator that wants to delegate to Cursor's headless CLI.
 Same brief/acceptance/review rules as all other vendor workers.
 The launcher prepends the standard worker preamble.
 
+Critical work (`--critical`): none — cursor has no large tier and is refused outright unless `--allow-small`.
+
 ## Tier ladder
 
 | Tier | Cursor model | Use for |
@@ -16,7 +18,7 @@ The launcher prepends the standard worker preamble.
 | `auto` | auto | **default** — Cursor picks |
 | `composer` | composer-2.5 | Cursor's Composer model |
 
-`--yolo` maps to `--force`. Raw model ids from `agent --list-models` also work.
+`--yolo` maps to `--force`. Raw model ids from `cursor-agent --list-models` also work.
 
 ## Commands
 
