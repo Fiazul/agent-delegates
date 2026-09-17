@@ -5,7 +5,7 @@ description: Use when delegating a task to a Grok Build (xAI) worker via the gro
 
 # Delegate to Grok Build
 
-Third-vendor twin of a Claude subagent. Same brief/acceptance/review rules.
+Third-vendor worker for any main agent. Same brief/acceptance/review rules.
 The launcher prepends the standard worker preamble.
 
 Critical work (`--critical`): only `best` allowed.
@@ -28,13 +28,16 @@ re-downloads the package every run.
 
 ```sh
 agent-delegates run grok best BRIEF.md --cd /path/to/repo --name my-task
-agent-delegates resume grok SESSION_ID FOLLOWUP.md --cd /path/to/repo
+agent-delegates resume grok SESSION_ID FOLLOWUP.md --cd /path/to/repo [--tier T | --model M]
 agent-delegates interrupt grok
 agent-delegates close grok
 ```
 
 `--yolo` enables `--always-approve` (needed for briefs that run commands;
 headless mode can't prompt). Brief filename `-` reads stdin.
+Resume reuses the recorded model; `--tier` wins over `--model`, and no record
+prints a warning before using the vendor default. Grok passes `--effort` but
+warns that `--add-dir` is unsupported; both model flags are invalid on `run`.
 
 ## Writing the brief
 

@@ -1,4 +1,22 @@
-# TODO (state as of 2026-09-13 13:10, pushed unreviewed at the user's request)
+# TODO
+
+**Status 2026-09-18.** Items 1–3, 5, 6 closed: Opus reviewed the Node port twice, findings fixed
+(commits 1ec95da, 323890f, edf2758; 706 tests); codex smoke, renderer, agy/grok quota handling all
+verified live. User tested from Cursor and Codex as orchestrators (workers on codex, claude, cursor,
+opencode passed) and on Windows.
+
+Still open:
+- macOS paths untested (Terminal.app via osascript).
+- agy / opencode as the *orchestrator*: not tested, and not a supported `install --main` target yet
+  (only claude|codex|cursor|all; their skill dirs are unknown). Feature gap, not a test gap.
+- A worker terminal failing is fine as long as the orchestrator sees it (exit file + last.md banner);
+  not a bug.
+
+The list below is history of what was checked and why. New items go in a fresh section at the top.
+
+---
+
+# History (state as of 2026-09-13 13:10, pushed unreviewed at the user's request)
 
 Branch `node-cli` = master now. Node port done by a Codex `sol` worker, docs by an Antigravity Opus worker;
 Linux smoke passed (agy run/resume/close, claude haiku run). **No review pass completed** — every vendor

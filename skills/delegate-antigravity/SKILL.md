@@ -1,11 +1,11 @@
 ---
 name: delegate-antigravity
-description: Use when delegating a task to Antigravity (agy) — free-tier Gemini/Claude via the agy CLI — because Claude weekly usage is high, user says "antigravity", "agy", "gemini worker", "use flash/pro", or wants a zero-cost second-vendor implementation. Headless agy auto-denies shell commands unless full-permission mode is used.
+description: Use when delegating a task to Antigravity (agy) — free-tier Gemini/Claude via the agy CLI — because the main agent's quota is low, user says "antigravity", "agy", "gemini worker", "use flash/pro", or wants a zero-cost second-vendor implementation. Headless agy auto-denies shell commands unless full-permission mode is used.
 ---
 
 # Delegate to Antigravity (agy)
 
-Free-tier twin of a Claude subagent. Same brief/acceptance/review rules.
+Free-tier worker for any main agent. Same brief/acceptance/review rules.
 The launcher prepends the standard worker preamble and adds an absolute
 `WORKING DIRECTORY` header to the prompt.
 
@@ -32,13 +32,15 @@ re-downloads the package every run.
 
 ```sh
 agent-delegates run agy flash BRIEF.md --cd /path/to/repo --name my-task
-agent-delegates resume agy CONVERSATION_ID FOLLOWUP.md --cd /path/to/repo
+agent-delegates resume agy CONVERSATION_ID FOLLOWUP.md --cd /path/to/repo [--tier T | --model M]
 agent-delegates interrupt agy
 agent-delegates close agy
 ```
 
 `--safe` selects accept-edits mode. `--add-dir D` adds workspace dirs.
 Brief filename `-` reads stdin. Vendor alias `antigravity` is accepted.
+Resume reuses the recorded model; `--tier` wins over `--model`, and no record
+prints a warning before using the vendor default. Those flags are invalid on `run`.
 
 ## Writing the brief
 

@@ -29,12 +29,15 @@ re-downloads the package every run.
 
 ```sh
 agent-delegates run opencode free BRIEF.md --cd /path/to/repo --name my-task
-agent-delegates resume opencode SESSION_ID FOLLOWUP.md --cd /path/to/repo
+agent-delegates resume opencode SESSION_ID FOLLOWUP.md --cd /path/to/repo [--tier T | --model M]
 agent-delegates interrupt opencode
 agent-delegates close opencode
 ```
 
 Brief filename `-` reads stdin.
+Resume reuses the recorded model; `--tier` wins over `--model`, and no record
+prints a warning before using the vendor default. OpenCode maps `--effort` to
+`--variant` and warns that `--add-dir` is unsupported; both flags are invalid on `run`.
 
 ## Writing the brief
 

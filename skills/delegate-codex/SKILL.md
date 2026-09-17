@@ -1,11 +1,11 @@
 ---
 name: delegate-codex
-description: Use when delegating a task to a Codex (OpenAI) worker — user says "codex", "summon codex", "use sol/astra/terra/luna", wants a second-vendor opinion, or Claude weekly usage is high. Codex runs non-interactively via `codex exec`; hangs, wrong model slugs, sandbox git restrictions, and 5-hour usage limits are the usual failures.
+description: Use when delegating a task to a Codex (OpenAI) worker — user says "codex", "summon codex", "use sol/astra/terra/luna", wants a second-vendor opinion, or the main agent's quota is low. Codex runs non-interactively via `codex exec`; hangs, wrong model slugs, sandbox git restrictions, and 5-hour usage limits are the usual failures.
 ---
 
 # Delegate to Codex
 
-Codex-side twin of a Claude subagent. Same orchestration rules: brief with
+Codex-side worker for any main agent. Same orchestration rules: brief with
 constraints + acceptance criteria, worker is sole executor, review the diff
 afterwards. The launcher prepends the standard worker preamble.
 
@@ -31,7 +31,7 @@ re-downloads the package every run.
 
 ```sh
 agent-delegates run codex terra BRIEF.md --cd /path/to/repo --name my-task
-agent-delegates resume codex THREAD_ID FOLLOWUP.md --cd /path/to/repo
+agent-delegates resume codex THREAD_ID FOLLOWUP.md --cd /path/to/repo [--tier T | --model M]
 agent-delegates interrupt codex      # or interrupt my-task
 agent-delegates close codex
 ```
@@ -39,6 +39,11 @@ agent-delegates close codex
 `--ro` selects read-only sandbox (reviews). `--add-dir D` adds writable dirs.
 Brief filename `-` reads stdin. Raw model slugs (e.g. `gpt-5.6-sol`) work
 as the tier argument.
+
+Resume reuses the recorded model; `--tier` wins over `--model`, and no record
+prints a warning before using the vendor default. It pins model with `-c model=<slug>`,
+sandbox with `-c sandbox_mode=` plus `--ignore-user-config` (except `--full`),
+and passes `--effort`; resume warns that Codex does not support `--add-dir`.
 
 ## Writing the brief
 

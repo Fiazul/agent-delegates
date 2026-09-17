@@ -4,7 +4,7 @@
 
 A zero-dependency Node CLI (`agent-delegates`) that runs Codex, Antigravity,
 Grok Build, Claude Code, Cursor, and OpenCode workers in reusable terminal
-windows. An orchestrating agent writes a brief, the launcher opens the worker
+windows. A main agent (Claude Code, Codex, or Cursor) writes a brief, the launcher opens the worker
 in a visible console, and collects `exit` + `last.md` when it finishes.
 
 ## Architecture

@@ -29,12 +29,15 @@ re-downloads the package every run.
 
 ```sh
 agent-delegates run cursor auto BRIEF.md --cd /path/to/repo --name my-task
-agent-delegates resume cursor SESSION_ID FOLLOWUP.md --cd /path/to/repo
+agent-delegates resume cursor SESSION_ID FOLLOWUP.md --cd /path/to/repo [--tier T | --model M]
 agent-delegates interrupt cursor
 agent-delegates close cursor
 ```
 
 Brief filename `-` reads stdin.
+Resume reuses the recorded model; `--tier` wins over `--model`, and no record
+prints a warning before using the vendor default. Cursor passes `--add-dir`;
+it warns that `--effort` is unsupported, and both model flags are invalid on `run`.
 
 ## Writing the brief
 

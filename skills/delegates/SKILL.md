@@ -1,6 +1,6 @@
 ---
 name: delegates
-description: Zero-cost quota check for Claude, Codex, Antigravity, Grok, Cursor, and OpenCode. Use when the user types /delegates, asks how much quota is left, or before spawning any worker when Claude weekly usage may be high.
+description: Zero-cost quota check for Claude, Codex, Antigravity, Grok, Cursor, and OpenCode. Use when the user types /delegates, asks how much quota is left, or before spawning any worker when the main agent's quota may be low.
 ---
 
 # /delegates — quota status
@@ -28,7 +28,7 @@ command with no model turn at all.
 Brief template: `../delegate-codex/brief-template.md` — Goal, Scope out, and
 Acceptance criteria are mandatory.
 
-Hard cap: **3 concurrent workers** (all vendors, subagents, and reviewers combined) unless the
+Hard cap: **at most 3 workers** (all vendors, subagents, and reviewers combined) unless the
 user explicitly asks for more. At the cap, wait for one to finish before launching the next.
 
 Run `agent-delegates pick --json` and follow it (add `--critical` for production/live-data

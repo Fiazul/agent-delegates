@@ -1,12 +1,12 @@
 ---
 name: delegate-claude
-description: Use when a Codex, Antigravity, or Grok agent needs to delegate work to a Claude Code worker — user says "use claude", "claude worker", "delegate to claude", or wants Claude's strengths on a subtask. Supports haiku/sonnet/opus tiers. Default permission is acceptEdits; --yolo bypasses permissions.
+description: Use when a main agent needs to delegate work to a Claude Code worker — user says "use claude", "claude worker", "delegate to claude", or wants Claude's strengths on a subtask. Supports haiku/sonnet/opus tiers. Default permission is acceptEdits; --yolo bypasses permissions.
 ---
 
 # Delegate to Claude Code
 
-For a Codex, Antigravity, or Grok orchestrator that wants to delegate to
-Claude Code. Same brief/acceptance/review rules as all other vendor workers.
+For any main agent that wants to delegate to Claude Code. Same
+brief/acceptance/review rules as all other vendor workers.
 The launcher prepends the standard worker preamble.
 
 Critical work (`--critical`): only `opus` allowed.
@@ -30,12 +30,14 @@ re-downloads the package every run.
 
 ```sh
 agent-delegates run claude sonnet BRIEF.md --cd /path/to/repo --name my-task
-agent-delegates resume claude SESSION_ID FOLLOWUP.md --cd /path/to/repo
+agent-delegates resume claude SESSION_ID FOLLOWUP.md --cd /path/to/repo [--tier T | --model M]
 agent-delegates interrupt claude
 agent-delegates close claude
 ```
 
 Brief filename `-` reads stdin. `--add-dir D` adds directories.
+Resume reuses the recorded model; `--tier` wins over `--model`, and no record
+prints a warning before using the vendor default. Those flags are invalid on `run`.
 
 ## Writing the brief
 

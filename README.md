@@ -14,6 +14,9 @@ Requires Node.js 18+, npm, and Git for GitHub installation. Vendor CLIs can be
 installed during setup or supplied on PATH; authentication is a separate step.
 No runtime npm dependencies, Python, jq, or build step required.
 
+The main agent can be Claude Code, Codex, or Cursor; pick it with `install --main`.
+Workers can be any of the six vendors, including another Claude.
+
 **Primary (durable global CLI):**
 
 ```sh
@@ -256,7 +259,7 @@ place.
 agent-delegates status                                       # quota table
 agent-delegates status --probe-grok                          # refresh Grok (tiny paid call)
 agent-delegates run codex luna BRIEF.md --cd "/path/to/repo"
-agent-delegates resume codex THREAD_ID FOLLOWUP.md --cd "/path/to/repo"
+agent-delegates resume codex THREAD_ID FOLLOWUP.md --cd "/path/to/repo" [--tier T | --model M]
 agent-delegates interrupt codex
 agent-delegates close codex
 agent-delegates --help
@@ -266,6 +269,11 @@ Vendors are `codex`, `agy` (alias `antigravity`), `grok`, `claude`, `cursor`,
 and `opencode`. Use `--name N` on run/resume for a named window, then
 `interrupt N` or `close N`.
 A brief filename of `-` reads stdin. Always repeat `--cd` on resume.
+
+**Resume model:** `resume` reuses the model recorded by the original run. Use
+`--tier T` or `--model M` to pin another one (`--tier` wins); without a record,
+it prints `WARNING:` and uses the vendor default. These flags are errors on
+`run`, where the tier/model is positional.
 
 Writing a brief: start from
 [`skills/delegate-codex/brief-template.md`](skills/delegate-codex/brief-template.md).
@@ -324,6 +332,18 @@ files and operations.
 `--timeout` flag is given). A killed job exits 124 and is classified "timed
 out" (`lib/failure.js`), same as any other failure — `run auto`/`handoff`
 treat it like a non-quota failure (it does not trigger a hop).
+
+**Job lifecycle:** after a worker prints its terminal event, it gets 20 seconds
+to exit; otherwise the launcher kills its process tree and classifies from the
+events (a successful stream exits 0). Set `DELEGATE_TERMINAL_GRACE_MS` (`0` disables);
+each later stream event re-arms the grace timer. Ctrl-C, SIGTERM, and SIGHUP kill
+the whole worker tree; `interrupt` first verifies the recorded pid is still that worker.
+
+**Vendor option differences:** Codex resume pins its model with `-c model=<slug>`
+and sandbox with `-c sandbox_mode=` plus `--ignore-user-config` (unless `--full`),
+and passes `--effort`; it warns that
+`--add-dir` is unsupported. Cursor passes `--add-dir`; Grok/OpenCode warn when
+it is unsupported; OpenCode maps `--effort` to `--variant`.
 
 **Preflight login check:** before submitting a job, `codex`/`grok`/`cursor`/
 `opencode` get a cheap local check that the vendor CLI is actually logged in,
@@ -405,6 +425,11 @@ it stops and returns that result, since burning two more vendors' quota won't
 fix a bug. `--max-hops N` caps how many times it will hop (default 2); once
 no usable vendor remains, or the cap is hit, it returns the last result as-is.
 
+If an invocation throws (for example a missing binary, preflight failure, or
+exit 127), `run auto` prints `AUTO: <vendor> skipped — <reason>` and tries the
+next vendor; a vendor with no resolvable binary is never chosen. A hop says
+`unavailable` for this case and `exhausted` only for a quota failure.
+
 `handoff <job-dir> <vendor> [tier] --cd DIR` builds a continuation brief for
 `<vendor>` from a finished job directory and starts a fresh job there. The
 continuation brief includes: the original brief text, the failure
@@ -418,10 +443,17 @@ there.
 
 ## When does the orchestrator delegate? (routing policy)
 
-Only the Claude Code orchestrator consults this — workers never see it, by
-design. `lib/policy.js` decides `external` vs `claude` from a Claude quota
-snapshot (`~/.claude/rate_limits.json`, written by the statusline) and a
-small config file:
+Only the main agent (the orchestrator) consults this; workers never see it, by
+design. `lib/policy.js` decides `external` vs `stay` from the main agent's own
+quota snapshot and a small config file. Today the only snapshot source is
+Claude Code's (`~/.claude/rate_limits.json`, written by the statusline), so
+the pace rule is active when the main is Claude Code; a Codex or Cursor main
+still gets `status`/`pick`/`run auto` vendor selection, just without a pace
+rule of its own (`route-check --self codex` is the open item).
+
+At most **3 workers** may run at once across all vendors, Claude subagents,
+and reviewers, unless the user asks for more. Count live workers before spawn
+and wait or queue work at the cap.
 
 - **POSIX:** `~/.config/delegates/routing.json`
 - **Windows:** `%APPDATA%\delegates\routing.json`
@@ -454,7 +486,7 @@ Defaults (missing/invalid file, or a partial file merged over these):
   notices. Falls back to `mode: "fixed"` if `seven_day.resets_at` is missing
   from the snapshot.
 - If the snapshot is missing or older than `staleMinutes`, the route is
-  `unknown` (stay on Claude, but say the data is missing/stale) rather than
+  `unknown` (stay in-house, but say the data is missing/stale) rather than
   guessing either way.
 - If the policy would say `external` but no external vendor currently has
   quota (checked via `status`'s row logic), it stays on `claude` instead —
@@ -500,18 +532,18 @@ agent-delegates pick --critical --json
 Four possible JSON shapes:
 
 ```json
-{"route":"claude","reason":"wk 3% used vs 6.9% of week elapsed (+10 slack); within pace","suggest":"Claude subagent via the Agent tool (e.g. a Sonnet worker; Opus for review)"}
-{"route":"unknown","reason":"no Claude quota snapshot","suggest":"Claude subagent via the Agent tool (e.g. a Sonnet worker; Opus for review)"}
+{"route":"claude","reason":"wk 3% used vs 6.9% of week elapsed (+10 slack); within pace","suggest":"do the work in-house"}
+{"route":"unknown","reason":"no Claude quota snapshot","suggest":"do the work in-house"}
 {"route":"external","vendor":"agy","tier":"flash","critical":false,"reason":"wk 60% used vs 14% of week elapsed (+10 slack)","command":"agent-delegates run agy flash BRIEF.md --cd <dir>"}
-{"route":"none","reason":"all external vendors exhausted or logged out; stay on Claude","suggest":"Claude subagent via the Agent tool (e.g. a Sonnet worker; Opus for review)"}
+{"route":"none","reason":"all external vendors exhausted or logged out; stay in-house","suggest":"do the work in-house"}
 ```
 
-`route:"claude"`/`"unknown"` mean stay on Claude (the `suggest` field names
-the subagent path). `route:"external"` means run the given `command`.
+`route:"claude"`/`"unknown"` mean stay with the main agent and do the work
+in-house. `route:"external"` means run the given `command`.
 `route:"none"` means the policy wanted external but nothing usable is
 actually standing (everything exhausted/logged out, or — under
 `--critical` — nothing left with a large-enough tier after filtering), so
-it falls back to Claude too.
+it falls back to the main agent too.
 
 ### The hook is advisory
 
@@ -527,8 +559,7 @@ is advisory, not enforcement: if it conflicts with your own rules, disable
 it with `--no-hook` at install time, or set `mode: "fixed"` and
 `threshold: 100` in `routing.json` so it never fires. `run auto` also
 consults this policy itself (`respectPolicy: true` by default) — if it says
-stay on Claude, `claude` is moved to the front of the try-order for that
-run.
+stay in-house, it does not delegate for that run.
 
 ## Critical work and permissions
 
@@ -641,8 +672,8 @@ report. Treat briefs and worker transcripts as private project data.
 
 ## Extras
 
-`extras/claude-routing-rule.md` contains cross-vendor routing guidance for
-Claude orchestrators (quota thresholds, tier equivalents, rerouting on
+`extras/claude-routing-rule.md` contains cross-vendor routing guidance for a
+Claude Code main agent (quota thresholds, tier equivalents, rerouting on
 exhaustion).
 
 ## Development

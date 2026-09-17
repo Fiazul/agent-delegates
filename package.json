@@ -1,7 +1,7 @@
 {
   "name": "agent-delegates",
   "version": "1.0.0",
-  "description": "Cross-vendor terminal workers for Codex, Antigravity, Grok, Claude Code, Cursor, and OpenCode",
+  "description": "Cross-vendor terminal workers from a Claude Code, Codex, or Cursor main agent",
   "license": "MIT",
   "author": "Fiazul Haque",
   "repository": {

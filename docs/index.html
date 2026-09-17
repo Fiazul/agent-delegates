@@ -1,7 +1,7 @@
 <title>agent-delegates</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Run Codex, Antigravity, Grok Build, Claude Code, Cursor, and OpenCode workers in reusable terminal windows from your main coding agent.">
+<meta name="description" content="Run Codex, Antigravity, Grok Build, Claude Code, Cursor, and OpenCode workers from a Claude Code, Codex, or Cursor main agent.">
 <style>
   :root {
     --bg: #ffffff;
@@ -199,7 +199,7 @@
 <main>
   <section class="hero">
     <h1>agent-delegates</h1>
-    <p class="pitch">Run Codex, Antigravity, Grok Build, Claude Code, Cursor, and OpenCode workers in reusable terminal windows from your main coding agent.</p>
+    <p class="pitch">Run Codex, Antigravity, Grok Build, Claude Code, Cursor, and OpenCode workers in reusable terminal windows. Your main agent can be Claude Code, Codex, or Cursor.</p>
     <pre><code>npx --yes github:Fiazul/agent-delegates install</code></pre>
     <p class="note">Durable global install:</p>
     <pre><code>npm install -g github:Fiazul/agent-delegates</code></pre>
@@ -224,7 +224,7 @@
     <div class="grid">
       <div class="card">
         <h3>Pace-based routing</h3>
-        <p>Compares Claude weekly usage to elapsed time in the window. <code>agent-delegates pick --json</code> returns the vendor/tier/command to run.</p>
+        <p>For a Claude Code main, compares weekly usage to elapsed time in the window. <code>agent-delegates pick --json</code> returns the vendor/tier/command to run.</p>
       </div>
       <div class="card">
         <h3><code>run auto</code> failover</h3>
