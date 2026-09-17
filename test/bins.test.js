@@ -12,7 +12,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const {
-  ENV_VAR, configPath, detectAgentCollision, exeCandidates, loadBinsConfig, resolveBin
+  ENV_VAR, assessAgentConflict, configPath, detectAgentCollision, exeCandidates, loadBinsConfig, resolveBin
 } = require('../lib/bins');
 
 // Runs `fn` with process.platform temporarily overridden — exeCandidates() reads the real
@@ -267,6 +267,72 @@ test('detectAgentCollision returns an empty list when no `agent` is on PATH', ()
   const emptyBin = path.join(dir, 'empty-bin');
   fs.mkdirSync(emptyBin, { recursive: true });
   assert.deepEqual(detectAgentCollision({ env: { PATH: emptyBin } }), []);
+});
+
+// Category fix: "conflict" is redefined from "two owners exist somewhere on PATH" to "the
+// effective `agent` (PATH order, first hit) is wrong". These five scenarios are the full matrix
+// from the reported bug: Cursor's `agent` first must never warn/prompt, no matter what else is
+// on PATH behind it; only something actually shadowing Cursor's `agent` is a real conflict.
+function agentConflictFixture() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-conflict-'));
+  const cursorDir = path.join(dir, 'cursor-bin');
+  const grokDir = path.join(dir, 'grok-bin');
+  const unknownDir = path.join(dir, 'unknown-bin');
+  const cursorReal = path.join(dir, 'cursor-install', 'cursor-agent-binary');
+  const grokReal = path.join(dir, 'grok-install', 'grok-binary');
+  const unknownReal = path.join(dir, 'unknown-install', 'something-else');
+  mkExecutable(cursorReal);
+  mkExecutable(grokReal);
+  mkExecutable(unknownReal);
+  mkSymlink(cursorReal, path.join(cursorDir, 'agent'));
+  mkSymlink(grokReal, path.join(grokDir, 'agent'));
+  mkSymlink(unknownReal, path.join(unknownDir, 'agent'));
+  return { cursorDir, grokDir, unknownDir };
+}
+
+test('assessAgentConflict: scenario 1 — Cursor first, Grok second -> no conflict (effective is Cursor)', () => {
+  const { cursorDir, grokDir } = agentConflictFixture();
+  const env = { PATH: [cursorDir, grokDir].join(path.delimiter) };
+  const result = assessAgentConflict({ env });
+  assert.equal(result.effective.owner, 'cursor');
+  assert.equal(result.cursorInstalled, true);
+  assert.equal(result.conflict, false);
+});
+
+test('assessAgentConflict: scenario 2 — Grok first, Cursor second -> conflict (Cursor is shadowed)', () => {
+  const { cursorDir, grokDir } = agentConflictFixture();
+  const env = { PATH: [grokDir, cursorDir].join(path.delimiter) };
+  const result = assessAgentConflict({ env });
+  assert.equal(result.effective.owner, 'grok');
+  assert.equal(result.cursorInstalled, true);
+  assert.equal(result.conflict, true);
+});
+
+test('assessAgentConflict: scenario 3 — Grok only, no Cursor -> no conflict (Cursor not installed)', () => {
+  const { grokDir } = agentConflictFixture();
+  const env = { PATH: grokDir };
+  const result = assessAgentConflict({ env });
+  assert.equal(result.effective.owner, 'grok');
+  assert.equal(result.cursorInstalled, false);
+  assert.equal(result.conflict, false);
+});
+
+test('assessAgentConflict: scenario 4 — Cursor only -> no conflict', () => {
+  const { cursorDir } = agentConflictFixture();
+  const env = { PATH: cursorDir };
+  const result = assessAgentConflict({ env });
+  assert.equal(result.effective.owner, 'cursor');
+  assert.equal(result.cursorInstalled, true);
+  assert.equal(result.conflict, false);
+});
+
+test('assessAgentConflict: scenario 5 — unknown owner first, Cursor second -> conflict, but the unknown path is still just reported, never assumed removable', () => {
+  const { cursorDir, unknownDir } = agentConflictFixture();
+  const env = { PATH: [unknownDir, cursorDir].join(path.delimiter) };
+  const result = assessAgentConflict({ env });
+  assert.equal(result.effective.owner, 'unknown');
+  assert.equal(result.cursorInstalled, true);
+  assert.equal(result.conflict, true);
 });
 
 // M1: the identity heuristic used to scan the last 3 path segments (basename + 2 parent dirs),

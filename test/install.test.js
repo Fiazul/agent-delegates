@@ -195,7 +195,11 @@ test("install --uninstall: routing.json is left untouched", async () => {
 // (per brief: stub via injection rather than depending on the real module), but the underlying
 // files are real so findRemovableDuplicates' fs.lstatSync/realpathSync calls behave exactly as
 // they would against a genuine installation.
-function makeAgentFixtures() {
+// order: 'cursor-first' (default) puts Cursor's own `agent` first on PATH — the effective
+// `agent` is correct, so this is NOT a conflict (at most a NOTE line about the shadowed Grok
+// duplicate). 'grok-first' puts Grok's duplicate first — Cursor's `agent` is actually shadowed,
+// which IS the real conflict `install` should warn/prompt about.
+function makeAgentFixtures(order = 'cursor-first') {
   const cursorDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-cursor-bin-'));
   const grokDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-grok-bin-'));
   const cursorAgent = path.join(cursorDir, 'agent');
@@ -204,12 +208,11 @@ function makeAgentFixtures() {
   fs.writeFileSync(grokBin, '#!/bin/sh\necho grok\n', { mode: 0o755 });
   const grokAgent = path.join(grokDir, 'agent');
   fs.symlinkSync(grokBin, grokAgent); // duplicate symlink of grok's own binary
+  const cursorHit = { path: cursorAgent, realpath: cursorAgent, owner: 'cursor' };
+  const grokHit = { path: grokAgent, realpath: grokBin, owner: 'grok' };
   return {
     cursorAgent, grokAgent, grokBin,
-    collisions: [
-      { path: cursorAgent, realpath: cursorAgent, owner: 'cursor' },
-      { path: grokAgent, realpath: grokBin, owner: 'grok' }
-    ]
+    collisions: order === 'grok-first' ? [grokHit, cursorHit] : [cursorHit, grokHit]
   };
 }
 
@@ -247,9 +250,31 @@ test('install: grok not selected (even with two real owners on PATH) -> no promp
   assert.equal(routing.bins.cursor, '/resolved/cursor');
 });
 
+test('install: Cursor\'s "agent" resolves first, Grok\'s is a shadowed duplicate -> no CONFLICT, one NOTE line, nothing touched', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  const { cursorAgent, grokAgent, collisions } = makeAgentFixtures('cursor-first');
+  const log = [];
+  await install({
+    home: fakeHome, main: 'claude', delegates: 'cursor,grok', isTTY: true, commandExists: () => true,
+    setupVendorClis: async () => {},
+    detectAgentCollision: async () => collisions,
+    resolveBin: async vendor => fixedResolveBin(vendor),
+    promptText: async question => {
+      if (question.includes('Apply this rename')) throw new Error('must never prompt when the effective agent is already Cursor');
+      return 'n'; // unrelated prompts (e.g. shell aliases) are fine
+    },
+    log: line => log.push(line)
+  });
+  assert.ok(!log.some(line => /CONFLICT/.test(line)));
+  assert.ok(log.some(line => line.includes('NOTE:') && line.includes('resolves to Cursor') && line.includes(grokAgent)));
+  assert.equal(fs.existsSync(grokAgent), true);
+  assert.equal(fs.existsSync(cursorAgent), true);
+  assert.equal(fs.existsSync(`${grokAgent}.agent-delegates-bak`), false);
+});
+
 test('install: both selected + two owners, conflict pre-existed -> CONFLICT block with "two tools" wording; decline leaves everything untouched', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
-  const { cursorAgent, grokAgent, grokBin, collisions } = makeAgentFixtures();
+  const { cursorAgent, grokAgent, grokBin, collisions } = makeAgentFixtures('grok-first');
   const log = [];
   await install({
     home: fakeHome, main: 'claude', delegates: 'cursor,grok', isTTY: true, commandExists: () => true,
@@ -272,7 +297,7 @@ test('install: both selected + two owners, conflict pre-existed -> CONFLICT bloc
 
 test('install: accepting the prompt moves the duplicate symlink to a reversible .bak, keeps the regular file', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
-  const { cursorAgent, grokAgent, grokBin, collisions } = makeAgentFixtures();
+  const { cursorAgent, grokAgent, grokBin, collisions } = makeAgentFixtures('grok-first');
   await install({
     home: fakeHome, main: 'claude', delegates: 'cursor,grok', isTTY: true, commandExists: () => true,
     setupVendorClis: async () => {},
@@ -290,7 +315,7 @@ test('install: accepting the prompt moves the duplicate symlink to a reversible 
 
 test('install: non-TTY without --resolve-agent-conflict -> prints the block, applies nothing', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
-  const { grokAgent, collisions } = makeAgentFixtures();
+  const { grokAgent, collisions } = makeAgentFixtures('grok-first');
   const log = [];
   await install({
     home: fakeHome, main: 'claude', delegates: 'cursor,grok', isTTY: false, commandExists: () => true,
@@ -306,7 +331,7 @@ test('install: non-TTY without --resolve-agent-conflict -> prints the block, app
 
 test('install: --resolve-agent-conflict yes applies non-interactively', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
-  const { grokAgent, collisions } = makeAgentFixtures();
+  const { grokAgent, collisions } = makeAgentFixtures('grok-first');
   await install({
     home: fakeHome, main: 'claude', delegates: 'cursor,grok', isTTY: false, resolveAgentConflict: 'yes', commandExists: () => true,
     setupVendorClis: async () => {},
@@ -318,9 +343,9 @@ test('install: --resolve-agent-conflict yes applies non-interactively', async ()
   assert.equal(fs.existsSync(`${grokAgent}.agent-delegates-bak`), true);
 });
 
-test('install: unknown-owner collision entries are never touched even when cursor+grok also present', async () => {
+test('install: unknown-owner collision entries are never touched even when cursor+grok also present (grok shadows cursor)', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
-  const { collisions } = makeAgentFixtures();
+  const { collisions } = makeAgentFixtures('grok-first');
   const unknownDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-unknown-bin-'));
   const unknownBin = path.join(unknownDir, 'something-else');
   fs.writeFileSync(unknownBin, '#!/bin/sh\n', { mode: 0o755 });
@@ -338,17 +363,46 @@ test('install: unknown-owner collision entries are never touched even when curso
   assert.equal(fs.existsSync(unknownAgent), true); // untouched regardless of --resolve-agent-conflict yes
 });
 
+// Scenario 5: an unrecognized binary shadows Cursor's `agent` — still a real conflict (Cursor's
+// own `agent` isn't winning PATH resolution either way), but the proposed fix must never touch
+// the unrecognized file, only Grok's own removable duplicate elsewhere in the list.
+test('install: unknown owner shadows Cursor\'s agent -> CONFLICT block; unknown file is never a removal candidate', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  const { cursorAgent, collisions } = makeAgentFixtures('cursor-first');
+  const unknownDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-unknown-bin-'));
+  const unknownBin = path.join(unknownDir, 'something-else');
+  fs.writeFileSync(unknownBin, '#!/bin/sh\n', { mode: 0o755 });
+  const unknownAgent = path.join(unknownDir, 'agent');
+  fs.symlinkSync(unknownBin, unknownAgent);
+  const cursorHit = collisions.find(c => c.owner === 'cursor');
+  const orderedCollisions = [{ path: unknownAgent, realpath: unknownBin, owner: 'unknown' }, cursorHit];
+  const log = [];
+
+  await install({
+    home: fakeHome, main: 'claude', delegates: 'cursor,grok', isTTY: false, resolveAgentConflict: 'yes', commandExists: () => true,
+    setupVendorClis: async () => {},
+    detectAgentCollision: async () => orderedCollisions,
+    resolveBin: async vendor => fixedResolveBin(vendor),
+    log: line => log.push(line)
+  });
+  assert.ok(log.some(line => /CONFLICT/.test(line)));
+  assert.ok(!log.some(line => line.includes(`would remove: ${unknownAgent}`)));
+  assert.equal(fs.existsSync(unknownAgent), true); // never touched
+  assert.equal(fs.existsSync(cursorAgent), true);
+});
+
 test('install: wording is "installing <vendor> added a second agent launcher" when the conflict is new (post-install only)', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
-  const { collisions } = makeAgentFixtures();
+  const { collisions } = makeAgentFixtures('grok-first');
   const cursorOnly = collisions.filter(c => c.owner === 'cursor');
   const log = [];
   let calls = 0;
   await install({
     home: fakeHome, main: 'claude', delegates: 'cursor,grok', isTTY: false, commandExists: () => true,
     setupVendorClis: async () => {},
-    // Before the vendor-install step: only cursor's `agent` exists. After: grok's appeared too
-    // (as if `setupVendorClis` had just installed Grok).
+    // Before the vendor-install step: only cursor's `agent` exists. After: grok's appeared too,
+    // ahead of cursor's on PATH (as if `setupVendorClis` had just installed Grok in front of it)
+    // — this is what actually makes it a conflict, not merely grok's presence.
     detectAgentCollision: async () => { calls++; return calls === 1 ? cursorOnly : collisions; },
     resolveBin: async vendor => fixedResolveBin(vendor),
     log: line => log.push(line)
@@ -358,7 +412,7 @@ test('install: wording is "installing <vendor> added a second agent launcher" wh
 
 test('install: wording is "two tools ... already" when the conflict existed before this run', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
-  const { collisions } = makeAgentFixtures();
+  const { collisions } = makeAgentFixtures('grok-first');
   const log = [];
   await install({
     home: fakeHome, main: 'claude', delegates: 'cursor,grok', isTTY: false, commandExists: () => true,

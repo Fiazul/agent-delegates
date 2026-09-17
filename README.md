@@ -129,12 +129,18 @@ was skipped) the line prints `BIN: <command> (<source>) [unverified]` instead
 of silently trusting an unconfirmed binary.
 
 Your own shell is a different story: if both are installed, whichever `agent`
-comes first on your `PATH` silently decides what a bare `agent -p` runs. When
-`install` selects both `cursor` and `grok` (as a delegate, or `cursor` as
-`--main`) and finds this collision, it prints a loud block explaining it and,
-when the duplicate is a plain symlink safely traceable back to the vendor's
-own canonical binary in the same directory (never a regular file — that could
-be someone's real launcher), offers to rename it aside:
+comes first on your `PATH` silently decides what a bare `agent -p` runs. But
+that's only a problem when it decides wrong: **it's a conflict only when
+something (Grok, or an unrecognized binary) shadows Cursor's `agent`** — if
+Cursor's own `agent` already wins PATH resolution, or Cursor isn't installed
+at all, `install` says nothing and touches nothing, no matter how many other
+`agent` launchers exist further down PATH (at most one plain `NOTE:` line if
+a harmless duplicate is sitting there shadowed). When `install` selects both
+`cursor` and `grok` (as a delegate, or `cursor` as `--main`) and finds a real
+conflict, it prints a loud block explaining it and, when the duplicate is a
+plain symlink safely traceable back to the vendor's own canonical binary in
+the same directory (never a regular file — that could be someone's real
+launcher), offers to rename it aside:
 
 ```
 CONFLICT: two tools on this system both provide a command named "agent"

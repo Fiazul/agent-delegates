@@ -1,6 +1,6 @@
 ---
 name: delegate-cursor
-description: Use when delegating a task to a Cursor Agent CLI worker — user says "cursor", "use cursor", "composer", or wants a Cursor-side second opinion. Runs non-interactively via `cursor-agent -p`; binary is `cursor-agent`, vendor id is `cursor`. (Cursor also installs a plain `agent` alias, which collides with Grok's — this tool never calls it; see README.md "Cursor and Grok both install `agent`".)
+description: Use when delegating a task to a Cursor Agent CLI worker — user says "cursor", "use cursor", "composer", or wants a Cursor-side second opinion. Runs non-interactively via `cursor-agent -p`; binary is `cursor-agent`, vendor id is `cursor`. (Cursor also installs a plain `agent` alias, which collides with Grok's — this tool never calls it; it's only a real conflict when something shadows Cursor's `agent`, see README.md "Cursor and Grok both install `agent`".)
 ---
 
 # Delegate to Cursor Agent

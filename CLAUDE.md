@@ -104,3 +104,8 @@ node bin/cli.js handoff /path/to/out-dir codex terra --cd /path/to/repo   # cont
   with Grok's own `agent` alias — see README.md "Cursor and Grok both install `agent`"); the
   installer's Cursor-presence check and the login preflight hint (`cursor-agent login`) both go
   through the same resolver as job invocation.
+- The `agent` collision is a conflict for `install` to warn/prompt about only when something
+  (Grok, or an unrecognized binary) shadows Cursor's `agent` in PATH order — `lib/bins.js`'s
+  `assessAgentConflict`/`lib/install.js`'s `deriveAgentConflict` key on `hits[0].owner`, not on
+  whether two owners merely exist somewhere on PATH; Cursor's `agent` winning PATH resolution
+  (or Cursor not being installed) is never a conflict, at most a single `NOTE:` line.

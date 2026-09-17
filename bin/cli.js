@@ -37,7 +37,7 @@ Run options:
   --main W       install: which CLI is the main orchestrator (claude|codex|cursor|all; default claude; a TTY asks if omitted)
   --delegates v1,v2,...  install: which delegate vendors to set up (agy,codex,grok,claude,cursor,opencode; default agy,codex,grok; a TTY asks if omitted)
   --aliases yes|no  install: add cursor-agent/grok shell aliases pointing at their resolved binaries (opt-in; a TTY asks if omitted)
-  --resolve-agent-conflict yes|no  install: apply (or skip) the proposed fix when Cursor and Grok both claim the "agent" command (a TTY asks if omitted; default No)
+  --resolve-agent-conflict yes|no  install: apply (or skip) the proposed fix when something shadows Cursor's "agent" command (Grok or an unrecognized binary resolves first on PATH; a TTY asks if omitted; default No)
   --yes          install all missing vendor CLIs without prompting
   --critical     mark this brief as critical work (prod/servers/live data): only large models may run it
   --allow-small  override the critical-work guard and allow a small/standard model (not recommended)
