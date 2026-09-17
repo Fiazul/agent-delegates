@@ -82,9 +82,10 @@ job and reports one of three honest states per vendor:
 - `<cli>: found, NOT logged in — run '<login command>'.` — the same check
   positively confirms it is *not* logged in.
 - `<cli>: found; login status could not be verified — run '<login command>'
-  if a job fails with an auth error.` — no reliable local check exists (agy
-  has no local auth marker or `auth`/`status` subcommand) or the check itself
-  couldn't get a clean answer.
+  if a job fails with an auth error.` — the check itself couldn't get a clean
+  answer (CLI missing, timed out, or unparseable output). Antigravity is
+  checked with the read-only `agy -p /usage` call: usage groups back means
+  logged in, an authentication error means logged out.
 
 In an interactive terminal (and without `--yes` or `--no-login`), a
 `NOT logged in` result is followed by `Log in to <cli> now? [Y/n]`; answering

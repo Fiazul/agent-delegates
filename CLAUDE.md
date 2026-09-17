@@ -93,8 +93,9 @@ node bin/cli.js handoff /path/to/out-dir codex terra --cd /path/to/repo   # cont
   fixed at thread creation) — it only warns.
 - `install`'s per-vendor login check (found/installed CLIs) reuses `lib/status.js`'s `preflight` —
   the same function `run` calls before every job — so "ok"/"logged-out"/"unknown" wording always
-  agrees between `install` and `run`; agy has no reliable local login marker on any platform and
-  is always "unknown", never guessed as ok or logged-out.
+  agrees between `install` and `run`. agy has no local login marker or auth subcommand, so its
+  check is the read-only `agy --output-format json -p /usage` call (same as the quota row):
+  usage groups → ok, auth-error text → logged-out, anything else → unknown.
 - `agent-delegates install` edits `~/.claude/settings.json` (statusLine + two hooks, on by
   default) — it always backs up the existing file to `settings.json.bak-<timestamp>` first, and
   merges rather than replaces (existing hooks/keys survive). A malformed existing

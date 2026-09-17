@@ -294,13 +294,6 @@ test('preflight(grok) refuses missing auth, passes with auth, warns on stale exh
   assert.match(warned.warning, /exhausted on 2026-09-01/);
 });
 
-test('preflight(agy) is always unknown: no reliable local login marker exists', async () => {
-  const agy = await preflight('agy', '/tmp/whatever', {});
-  assert.equal(agy.ok, true);
-  assert.equal(agy.skipped, true);
-  assert.equal(agy.state, 'unknown');
-  assert.equal(agy.loginCommand, 'agy');
-});
 
 test('preflight(claude) reports ok/logged-out/unknown from an injected claude auth status runner', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-preflight-claude-'));
@@ -629,4 +622,31 @@ test('agyRow: resolves the agy binary via lib/bins.js instead of hardcoding the 
   // Reaching a real answer at all (rather than "usage unavailable"/"?") proves the configured
   // fakeAgy binary was actually invoked, not the bare 'agy' name (which isn't on PATH here).
   assert.notEqual(row[2], '?');
+});
+
+test('preflight(agy): usage groups in /usage output -> ok', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-agy-'));
+  const r = await preflight('agy', home, {
+    agyUsage: async () => ({ code: 0, stdout: 'noise\n' + JSON.stringify({ command: { data: { groups: [{ name: 'Gemini', buckets: [{ remaining_fraction: 0.5 }] }] } } }) })
+  });
+  assert.equal(r.state, 'ok');
+  assert.equal(r.ok, true);
+});
+
+test('preflight(agy): authentication error text -> logged-out, still fail-open', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-agy-'));
+  const r = await preflight('agy', home, {
+    agyUsage: async () => ({ code: 1, stdout: '', stderr: 'Error: not logged in. Please sign in with agy' })
+  });
+  assert.equal(r.state, 'logged-out');
+  assert.equal(r.ok, true);
+  assert.equal(r.loginCommand, 'agy');
+});
+
+test('preflight(agy): runner failure or garbage -> unknown', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-agy-'));
+  const a = await preflight('agy', home, { agyUsage: async () => { throw new Error('ENOENT'); } });
+  const b = await preflight('agy', home, { agyUsage: async () => ({ code: 0, stdout: 'hello' }) });
+  assert.equal(a.state, 'unknown');
+  assert.equal(b.state, 'unknown');
 });
