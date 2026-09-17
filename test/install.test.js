@@ -1044,3 +1044,36 @@ test('real readline prompt accepts yes before closing the interface', () => {
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /codex: installed/);
 });
+
+// Alias prompt gate: aliases only help when the canonical name is NOT already reachable on PATH.
+// Reproduced live 2026-09-17: cursor-agent and grok both on PATH, install still asked to add aliases.
+test('install: alias prompt is skipped when cursor-agent and grok already resolve by name on PATH', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  const { collisions } = makeAgentFixtures('cursor-first');
+  const asked = [];
+  await install({
+    home: fakeHome, main: 'claude', delegates: 'cursor,grok', isTTY: true, commandExists: () => true,
+    setupVendorClis: async () => {},
+    detectAgentCollision: async () => collisions,
+    resolveBin: async vendor => ({ command: `/resolved/${vendor}`, source: vendor === 'cursor' ? 'path:cursor-agent' : 'path:grok', verified: true }),
+    promptText: async question => { asked.push(question); return 'n'; },
+    log: () => {}
+  });
+  assert.ok(!asked.some(q => /shell aliases/.test(q)), `alias prompt must not appear, got: ${asked.join(' | ')}`);
+  assert.equal(fs.existsSync(path.join(fakeHome, '.bashrc')) && fs.readFileSync(path.join(fakeHome, '.bashrc'), 'utf8').includes('alias cursor-agent='), false);
+});
+
+test('install: alias prompt appears when a binary resolved only via a well-known dir (not by name on PATH)', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  const { collisions } = makeAgentFixtures('cursor-first');
+  const asked = [];
+  await install({
+    home: fakeHome, main: 'claude', delegates: 'cursor,grok', isTTY: true, commandExists: () => true,
+    setupVendorClis: async () => {},
+    detectAgentCollision: async () => collisions,
+    resolveBin: async vendor => ({ command: `/resolved/${vendor}`, source: vendor === 'grok' ? 'well-known:~/.grok/bin/grok' : 'path:cursor-agent', verified: true }),
+    promptText: async question => { asked.push(question); return 'n'; },
+    log: () => {}
+  });
+  assert.ok(asked.some(q => /shell aliases/.test(q)), 'alias prompt expected when grok is not reachable by name');
+});
