@@ -201,6 +201,57 @@ test('enforce never refuses on resume, but still warns', () => {
   assert.ok(result.warnings.some(w => /bypass/i.test(w)));
 });
 
+// R10 (corrected per CLAUDE.md's documented decision — resume never refuses either way, since
+// the model was fixed at thread creation — but it must still WARN, not go silent, when a
+// follow-up brief reassesses as critical on a small/standard model).
+test('R10: enforce warns (never refuses, no --allow-small needed) when a resume follow-up is critical on a small model', () => {
+  const result = enforce({ vendor: 'codex', tier: 'luna', model: 'gpt-5.6-luna', critical: true, reasons: ['--critical flag set'], options: {}, mode: 'resume' });
+  assert.equal(result.ok, true);
+  assert.ok(result.warnings.some(w => /CRITICAL/.test(w) && /small model/.test(w)), JSON.stringify(result.warnings));
+});
+
+test('R10: enforce prints no critical warning on resume when the follow-up is not critical', () => {
+  const result = enforce({ vendor: 'codex', tier: 'luna', model: 'gpt-5.6-luna', critical: false, reasons: [], options: {}, mode: 'resume' });
+  assert.equal(result.ok, true);
+  assert.equal(result.warnings.length, 0);
+});
+
+// m3: on resume, invoke() passes the thread/session id as `tier` (there is no tier positional on
+// resume) — the warning must never print that id as if it were a tier/model name, and must
+// reflect that --tier/--model can actually pin a model on a resumed thread now.
+test('m3: enforce\'s resume warning prints the resolved model, not the thread/session id passed as `tier`', () => {
+  const result = enforce({
+    vendor: 'codex', tier: 'thread-9f3c1-not-a-tier-name', model: 'gpt-5.6-luna',
+    critical: true, reasons: ['x'], options: {}, mode: 'resume'
+  });
+  assert.equal(result.ok, true);
+  const warning = result.warnings.find(w => /CRITICAL WORK on resume/.test(w));
+  assert.ok(warning, JSON.stringify(result.warnings));
+  assert.ok(!warning.includes('thread-9f3c1-not-a-tier-name'), warning);
+  assert.match(warning, /gpt-5\.6-luna/);
+  assert.match(warning, /--tier\/--model/);
+});
+
+test('R10: enforce prints no critical warning on resume when the model is already large', () => {
+  const result = enforce({ vendor: 'codex', tier: 'sol', model: 'gpt-5.6-sol', critical: true, reasons: ['x'], options: {}, mode: 'resume' });
+  assert.equal(result.ok, true);
+  assert.equal(result.warnings.some(w => /CRITICAL WORK on resume/.test(w)), false);
+});
+
+// R12: an --allow-small override on critical work used to pass through silently; it must now
+// surface a warning saying the override is in effect.
+test('R12: enforce warns when --allow-small actually overrides a refusal on critical work', () => {
+  const result = enforce({ vendor: 'codex', tier: 'luna', model: 'gpt-5.6-luna', critical: true, reasons: ['--critical flag set'], options: { allowSmall: true }, mode: 'run' });
+  assert.equal(result.ok, true);
+  assert.ok(result.warnings.some(w => /--allow-small override/.test(w)), JSON.stringify(result.warnings));
+});
+
+test('R12: enforce does not warn about --allow-small when the model is already large (override never needed)', () => {
+  const result = enforce({ vendor: 'codex', tier: 'sol', model: 'gpt-5.6-sol', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'run' });
+  assert.equal(result.ok, true);
+  assert.equal(result.warnings.some(w => /--allow-small override/.test(w)), false);
+});
+
 // H4: a trailing '/**' guard.paths glob (the idiomatic "this dir and everything under it"
 // pattern) used to compile to a regex requiring a slash after the prefix (`^/srv/prod/.*$`), so
 // cwd === the guarded root exactly (no trailing segment) silently did NOT match — exactly the

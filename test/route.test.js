@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { pickVendor, runAuto } = require('../lib/route');
+const { isHopWorthy, pickVendor, runAuto } = require('../lib/route');
 
 test('pickVendor: claude usable with wk N% > 0', () => {
   const rows = [['claude', 'wk 42% · 5h 88%', 'fable-5.1 opus-5 sonnet-5 haiku-4.5']];
@@ -460,4 +460,151 @@ test('runAuto: no --cd inside a guarded directory still resolves via process.cwd
     if (savedHome == null) delete process.env.HOME; else process.env.HOME = savedHome;
     if (savedProfile == null) delete process.env.USERPROFILE; else process.env.USERPROFILE = savedProfile;
   }
+});
+
+// R6: pickVendor gains an optional opts.resolveBin (unused by every caller above and by
+// lib/policy.js — pure back-compat) that excludes a vendor whose binary can't actually be
+// resolved (e.g. a cursor/grok PATH identity conflict, see lib/bins.js) from ever being
+// picked, instead of picking it on quota text alone and finding out only at spawn time.
+test('R6: pickVendor excludes a vendor whose resolveBin resolves to no command, only when opts.resolveBin is supplied', () => {
+  const rows = [
+    ['cursor', 'logged in · no quota API', 'auto'],
+    ['codex', 'wk 40% (reset 3h) · 5h 20%', '?']
+  ];
+  const resolveBin = vendor => (vendor === 'cursor' ? { command: null, reason: 'conflict' } : { command: `/usr/bin/${vendor}` });
+  assert.equal(pickVendor(rows, ['cursor', 'codex'], { resolveBin }), 'codex');
+  // Back-compat: no opts.resolveBin -> unaffected, cursor picked first as before.
+  assert.equal(pickVendor(rows, ['cursor', 'codex']), 'cursor');
+});
+
+test('R6: pickVendor treats a resolveBin that throws the same as "no command" (never lets the throw escape)', () => {
+  const rows = [['cursor', 'logged in · no quota API', 'auto'], ['codex', 'wk 40% (reset 3h) · 5h 20%', '?']];
+  const resolveBin = vendor => { if (vendor === 'cursor') throw new Error('boom'); return { command: `/usr/bin/${vendor}` }; };
+  assert.equal(pickVendor(rows, ['cursor', 'codex'], { resolveBin }), 'codex');
+});
+
+test('isHopWorthy: exit-127-style "process exited 127"/"exited 127 before a result" failures hop even with no quota-ish text (R6)', () => {
+  assert.equal(isHopWorthy({ failed: true, reason: 'grok process exited 127 with no result' }), true);
+  assert.equal(isHopWorthy({ failed: true, reason: 'cursor exited 127 before a result event' }), true);
+  assert.equal(isHopWorthy({ failed: true, reason: 'TypeError: cannot read property of undefined' }), false);
+  assert.equal(isHopWorthy({ failed: false, reason: '' }), false);
+  assert.equal(isHopWorthy({ exhausted: true }), true);
+  assert.equal(isHopWorthy(null), false);
+});
+
+test('R6: runAuto hops on an exit-127-style bin-not-found failure, not just quota-text failures', async () => {
+  const rows = [
+    ['grok', 'ok', 'grok-4.6'],
+    ['codex', 'wk 40% (reset 3h) · 5h 20%', '?']
+  ];
+  const invoke = async () => ({ code: 1, outDir: '/out/grok-1', failed: true, exhausted: false, reason: 'grok process exited 127 with no result' });
+  const handoff = async (outDir, targetVendor) => ({ code: 0, outDir: `/out/${targetVendor}-2`, failed: false, exhausted: false });
+  const result = await runAuto('brief.md', { rows, priority: 'grok,codex', invoke, handoff }, '');
+  assert.equal(result.vendor, 'codex');
+  assert.equal(result.code, 0);
+});
+
+// R6 cosmetic: an exit-127 (bin-not-found) hop was never a quota exhaustion — the hop log line
+// must say "unavailable", not "exhausted", for that case (still says "exhausted" for a real
+// quota hop).
+test('R6: the hop log line says "unavailable" (not "exhausted") for a bin-not-found hop, and "exhausted" for a real quota hop', async () => {
+  const rows = [
+    ['grok', 'ok', 'grok-4.6'],
+    ['codex', 'wk 40% (reset 3h) · 5h 20%', '?']
+  ];
+  const handoff = async (outDir, targetVendor) => ({ code: 0, outDir: `/out/${targetVendor}-2`, failed: false, exhausted: false });
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  try {
+    const invokeBinMissing = async () => ({ code: 1, outDir: '/out/grok-1', failed: true, exhausted: false, reason: 'grok process exited 127 with no result' });
+    await runAuto('brief.md', { rows, priority: 'grok,codex', invoke: invokeBinMissing, handoff }, '');
+    assert.ok(logs.some(l => /grok unavailable → handing off to codex/.test(l)), JSON.stringify(logs));
+    assert.ok(!logs.some(l => /grok exhausted → handing off/.test(l)), JSON.stringify(logs));
+
+    logs.length = 0;
+    const invokeQuota = async () => ({ code: 1, outDir: '/out/grok-1', failed: true, exhausted: true, reason: 'grok HTTP 402' });
+    await runAuto('brief.md', { rows, priority: 'grok,codex', invoke: invokeQuota, handoff }, '');
+    assert.ok(logs.some(l => /grok exhausted → handing off to codex/.test(l)), JSON.stringify(logs));
+  } finally {
+    console.log = originalLog;
+  }
+});
+
+// R5: invoke() (and handoff()) can THROW rather than return a failed result (preflight
+// failure, an unresolvable binary, the critical-work guard) — a thrown error must not abort
+// the whole `run auto` while another vendor in the priority list still has quota.
+test('R5: runAuto skips a vendor whose invoke() throws and tries the next usable vendor instead of aborting', async () => {
+  const rows = [
+    ['cursor', 'logged in · no quota API', 'auto'],
+    ['codex', 'wk 40% (reset 3h) · 5h 20%', '?']
+  ];
+  const invokeCalls = [];
+  const invoke = async (mode, vendor) => {
+    invokeCalls.push(vendor);
+    if (vendor === 'cursor') throw new Error("cursor: 'agent' on PATH resolves to /opt/grok/bin/agent, which looks like grok");
+    return { code: 0, outDir: '/out/codex-1', failed: false, exhausted: false };
+  };
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  let result;
+  try {
+    result = await runAuto('brief.md', { rows, priority: 'cursor,codex', invoke, respectPolicy: false }, '');
+  } finally {
+    console.log = originalLog;
+  }
+  assert.deepEqual(invokeCalls, ['cursor', 'codex']);
+  assert.equal(result.vendor, 'codex');
+  assert.equal(result.code, 0);
+  assert.ok(logs.some(l => /AUTO: cursor skipped —.*looks like grok/.test(l)), JSON.stringify(logs));
+});
+
+test('R5: runAuto skips a vendor whose handoff() throws (mid-hop) and tries the next usable vendor', async () => {
+  const rows = [
+    ['agy', 'gemini wk 45% · claude/gpt wk 10%', '?'],
+    ['cursor', 'logged in · no quota API', 'auto'],
+    ['codex', 'wk 40% (reset 3h) · 5h 20%', '?']
+  ];
+  const invoke = async () => ({ code: 1, outDir: '/out/agy-1', failed: true, exhausted: true, reason: 'RESOURCE_EXHAUSTED (429)' });
+  const handoffCalls = [];
+  const handoff = async (outDir, targetVendor) => {
+    handoffCalls.push(targetVendor);
+    if (targetVendor === 'cursor') throw new Error('handoff: source job was critical and cursor has no large-model tier');
+    return { code: 0, outDir: `/out/${targetVendor}-2`, failed: false, exhausted: false };
+  };
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  let result;
+  try {
+    result = await runAuto('brief.md', { rows, priority: 'agy,cursor,codex', invoke, handoff, respectPolicy: false }, '');
+  } finally {
+    console.log = originalLog;
+  }
+  assert.deepEqual(handoffCalls, ['cursor', 'codex']);
+  assert.equal(result.vendor, 'codex');
+  assert.equal(result.code, 0);
+  assert.ok(logs.some(l => /AUTO: cursor skipped —.*no large-model tier/.test(l)), JSON.stringify(logs));
+});
+
+test('R5: runAuto surfaces a failure (never hangs/silently succeeds) when every remaining vendor throws', async () => {
+  const rows = [
+    ['cursor', 'logged in · no quota API', 'auto'],
+    ['grok', 'ok', 'grok-4.6']
+  ];
+  const invoke = async (mode, vendor) => { throw new Error(`${vendor} boom`); };
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  try {
+    await assert.rejects(
+      () => runAuto('brief.md', { rows, priority: 'cursor,grok', invoke, respectPolicy: false }, ''),
+      /no vendor with quota; tried: cursor, grok/
+    );
+  } finally {
+    console.log = originalLog;
+  }
+  assert.ok(logs.some(l => /AUTO: cursor skipped — cursor boom/.test(l)), JSON.stringify(logs));
+  assert.ok(logs.some(l => /AUTO: grok skipped — grok boom/.test(l)), JSON.stringify(logs));
 });

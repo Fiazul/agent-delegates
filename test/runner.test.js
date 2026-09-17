@@ -5,8 +5,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { buildJob, extractResult, invoke } = require('../lib/runner');
+const { buildJob, extractResult, invoke, resolveResumeModel } = require('../lib/runner');
 const { agyRow, preflight } = require('../lib/status');
+
+// M3: invoke() here spawns real console subprocesses (DELEGATE_NO_WINDOW=1 inline consoles).
+// Without DELEGATE_QUIET their inherited stdio can land raw/ANSI console output on this test
+// process's own stdout fd and corrupt the node test runner's structured reporting channel
+// ("Unable to deserialize cloned data") — see lib/console.js's Mirror.write/runInline.
+process.env.DELEGATE_QUIET = '1';
 
 test('vendor jobs preserve prompts and paths with spaces as individual arguments', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates job '));
@@ -643,10 +649,269 @@ test('preflight(agy): authentication error text -> logged-out, still fail-open',
   assert.equal(r.loginCommand, 'agy');
 });
 
+test('R7: codex resume pins the same sandbox_mode the run branch would use, plus --ignore-user-config, unless --full', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-codex-resume-'));
+  const out = path.join(dir, 'out');
+  fs.mkdirSync(out);
+
+  const { job: writeJob } = buildJob('codex', 'codex', 'resume', '', 'thread-1', 'follow-up', out, { cd: dir });
+  assert.ok(writeJob.args.includes('sandbox_mode=workspace-write'), JSON.stringify(writeJob.args));
+  assert.ok(writeJob.args.includes('--ignore-user-config'), JSON.stringify(writeJob.args));
+
+  const { job: roJob } = buildJob('codex', 'codex', 'resume', '', 'thread-1', 'follow-up', out, { cd: dir, ro: true });
+  assert.ok(roJob.args.includes('sandbox_mode=read-only'), JSON.stringify(roJob.args));
+
+  const { job: fullJob } = buildJob('codex', 'codex', 'resume', '', 'thread-1', 'follow-up', out, { cd: dir, full: true });
+  assert.ok(!fullJob.args.some(a => String(a).startsWith('sandbox_mode=')), JSON.stringify(fullJob.args));
+  assert.ok(!fullJob.args.includes('--ignore-user-config'), JSON.stringify(fullJob.args));
+});
+
+// m5: `codex exec resume --help` (live-checked 2026-09-18) has no `--add-dir` flag at all —
+// unlike `codex exec` (run mode) — so resume must warn-and-drop it like grok/opencode do,
+// instead of silently accepting the option and doing nothing with it. `-c model_reasoning_effort`
+// is still generic `-c key=value` config and reaches the resumed session fine.
+test('m5: codex resume warns and drops --add-dir (codex exec resume has no such flag), and passes model_reasoning_effort through', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-codex-resume-flags-'));
+  const extra = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-codex-resume-extra-'));
+  const out = path.join(dir, 'out');
+  fs.mkdirSync(out);
+  const originalError = console.error;
+  const errors = [];
+  console.error = (...args) => errors.push(args.join(' '));
+  try {
+    const { job } = buildJob('codex', 'codex', 'resume', 'gpt-5.6-luna', 'thread-1', 'follow-up', out, { cd: dir, addDir: [extra], effort: 'high' });
+    assert.ok(!job.args.includes('--add-dir'), JSON.stringify(job.args));
+    assert.ok(errors.some(e => /--add-dir ignored for codex resume/.test(e)), JSON.stringify(errors));
+    assert.ok(job.args.includes('model_reasoning_effort=high'), JSON.stringify(job.args));
+  } finally {
+    console.error = originalError;
+  }
+});
+
+// m5: opencode's `--variant` flag (confirmed via `opencode run --help`) maps directly onto
+// --effort now, instead of being warned-and-dropped like grok's/cursor's --effort.
+test('R8/m5: cursor passes --add-dir through; grok/opencode warn and drop --add-dir; cursor warns and drops --effort, opencode maps --effort to --variant', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-flags-'));
+  const extra = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-extra-'));
+  const originalError = console.error;
+  const errors = [];
+  console.error = (...args) => errors.push(args.join(' '));
+  try {
+    const out1 = path.join(dir, 'cursor');
+    fs.mkdirSync(out1);
+    const { job: cursorJob } = buildJob('agent', 'cursor', 'run', 'auto', '', 'brief', out1, { cd: dir, addDir: [extra], effort: 'high' });
+    assert.equal(cursorJob.args[cursorJob.args.indexOf('--add-dir') + 1], path.resolve(extra));
+    assert.ok(errors.some(e => /--effort ignored for cursor/.test(e)), JSON.stringify(errors));
+
+    errors.length = 0;
+    const out2 = path.join(dir, 'grok');
+    fs.mkdirSync(out2);
+    const { job: grokJob } = buildJob('grok', 'grok', 'run', 'grok-4.6', '', 'brief', out2, { cd: dir, addDir: [extra] });
+    assert.ok(!grokJob.args.includes('--add-dir'));
+    assert.ok(errors.some(e => /--add-dir ignored for grok/.test(e)), JSON.stringify(errors));
+
+    errors.length = 0;
+    const out3 = path.join(dir, 'opencode');
+    fs.mkdirSync(out3);
+    const { job: opencodeJob } = buildJob('opencode', 'opencode', 'run', 'opencode/mimo-v2.5-free', '', 'brief', out3, { cd: dir, addDir: [extra], effort: 'high' });
+    assert.ok(!opencodeJob.args.includes('--add-dir'));
+    assert.ok(errors.some(e => /--add-dir ignored for opencode/.test(e)), JSON.stringify(errors));
+    assert.ok(!errors.some(e => /--effort ignored for opencode/.test(e)), JSON.stringify(errors));
+    assert.equal(opencodeJob.args[opencodeJob.args.indexOf('--variant') + 1], 'high', JSON.stringify(opencodeJob.args));
+  } finally {
+    console.error = originalError;
+  }
+});
+
+test('R9: opencode accumulates multiple distinct text parts instead of the last one overwriting the rest', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-opencode-multi-'));
+  fs.copyFileSync(path.join(__dirname, 'fixtures', 'opencode-multi-text.jsonl'), path.join(dir, 'events.jsonl'));
+  const result = extractResult('opencode', dir);
+  assert.equal(result.text, 'first chunk\nsecond chunk');
+  assert.equal(result.failed, false);
+  assert.equal(fs.readFileSync(path.join(dir, 'last.md'), 'utf8').trim(), 'first chunk\nsecond chunk');
+});
+
 test('preflight(agy): runner failure or garbage -> unknown', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-agy-'));
   const a = await preflight('agy', home, { agyUsage: async () => { throw new Error('ENOENT'); } });
   const b = await preflight('agy', home, { agyUsage: async () => ({ code: 0, stdout: 'hello' }) });
   assert.equal(a.state, 'unknown');
   assert.equal(b.state, 'unknown');
+});
+
+// Regression coverage for the resume-forgets-model defect (2026-09-18): `resume` used to pass
+// no model at all, so Codex (and every other vendor) silently fell back to its own default
+// instead of the model the session was recorded with. resolveResumeModel() is the single shared
+// place that now decides, and buildJob()/invoke() must actually use what it returns.
+function writePriorJob(outRoot, dirName, { vendor, idField, id, model, startedAt }) {
+  const dir = path.join(outRoot, dirName);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, idField), `${id}\n`);
+  fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ vendor, model, startedAt }));
+}
+
+test('resolveResumeModel: picks the newest prior job\'s recorded model for the same vendor+id', () => {
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-resume-model-'));
+  const saved = process.env.DELEGATE_OUT;
+  process.env.DELEGATE_OUT = outRoot;
+  try {
+    writePriorJob(outRoot, 'luna-20260101-000000-000', { vendor: 'codex', idField: 'thread_id', id: 'thread-1', model: 'gpt-5.6-luna', startedAt: '2026-01-01T00:00:00.000Z' });
+    writePriorJob(outRoot, 'luna-20260102-000000-000', { vendor: 'codex', idField: 'thread_id', id: 'thread-1', model: 'gpt-6-astra', startedAt: '2026-01-02T00:00:00.000Z' });
+    // A different vendor/id sharing the same session_id-style file name must never match.
+    writePriorJob(outRoot, 'other-20260103-000000-000', { vendor: 'claude', idField: 'session_id', id: 'thread-1', model: 'claude-opus-5', startedAt: '2026-01-03T00:00:00.000Z' });
+
+    const resolved = resolveResumeModel('codex', 'thread-1', {});
+    assert.equal(resolved.model, 'gpt-6-astra', 'must pick the newest matching prior job, not just the first found');
+    assert.equal(resolved.warning, undefined);
+  } finally {
+    if (saved == null) delete process.env.DELEGATE_OUT; else process.env.DELEGATE_OUT = saved;
+  }
+});
+
+test('resolveResumeModel: explicit --tier wins over any recorded prior model', () => {
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-resume-model-tier-'));
+  const saved = process.env.DELEGATE_OUT;
+  process.env.DELEGATE_OUT = outRoot;
+  try {
+    writePriorJob(outRoot, 'luna-20260101-000000-000', { vendor: 'codex', idField: 'thread_id', id: 'thread-1', model: 'gpt-5.6-luna', startedAt: '2026-01-01T00:00:00.000Z' });
+    const resolved = resolveResumeModel('codex', 'thread-1', { tier: 'sol' });
+    assert.equal(resolved.model, 'gpt-5.6-sol');
+
+    const resolvedModelFlag = resolveResumeModel('codex', 'thread-1', { model: 'gpt-custom-slug' });
+    assert.equal(resolvedModelFlag.model, 'gpt-custom-slug');
+  } finally {
+    if (saved == null) delete process.env.DELEGATE_OUT; else process.env.DELEGATE_OUT = saved;
+  }
+});
+
+test('resolveResumeModel: no recorded model and no override -> empty model plus a one-line warning', () => {
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-resume-model-missing-'));
+  const saved = process.env.DELEGATE_OUT;
+  process.env.DELEGATE_OUT = outRoot;
+  try {
+    const resolved = resolveResumeModel('codex', 'thread-unknown', {});
+    assert.equal(resolved.model, '');
+    assert.match(resolved.warning, /resume: no recorded model for codex thread-unknown; vendor default will be used/);
+  } finally {
+    if (saved == null) delete process.env.DELEGATE_OUT; else process.env.DELEGATE_OUT = saved;
+  }
+});
+
+test('buildJob: codex resume pins the resolved model via `-c model=...` (no -m/--model flag exists on `exec resume`)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-codex-resume-model-'));
+  const out = path.join(dir, 'out');
+  fs.mkdirSync(out);
+  const { job } = buildJob('codex', 'codex', 'resume', 'gpt-5.6-luna', 'thread-1', 'follow-up', out, { cd: dir });
+  assert.ok(job.args.includes('model=gpt-5.6-luna'), JSON.stringify(job.args));
+  assert.ok(!job.args.includes('-m'), 'codex exec resume has no -m flag; it must go through -c');
+
+  const { job: noModelJob } = buildJob('codex', 'codex', 'resume', '', 'thread-1', 'follow-up', out, { cd: dir });
+  assert.ok(!noModelJob.args.some(a => String(a).startsWith('model=')), 'no model resolved -> no model override, vendor default applies');
+});
+
+test('buildJob: agy resume passes --model alongside --conversation when a model was resolved (non-codex vendor case)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-agy-resume-model-'));
+  const out = path.join(dir, 'out');
+  fs.mkdirSync(out);
+  const { job } = buildJob('agy', 'agy', 'resume', 'gemini-3.1-pro-high', 'conv-1', 'follow-up', out, { cd: dir });
+  assert.equal(job.args[job.args.indexOf('--conversation') + 1], 'conv-1');
+  assert.equal(job.args[job.args.indexOf('--model') + 1], 'gemini-3.1-pro-high');
+
+  const { job: noModelJob } = buildJob('agy', 'agy', 'resume', '', 'conv-1', 'follow-up', out, { cd: dir });
+  assert.ok(!noModelJob.args.includes('--model'));
+});
+
+test('invoke(): codex resume reads the prior run\'s recorded model and pins it, and records it in the resumed job\'s meta.json', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-invoke-resume-model-'));
+  const bin = path.join(dir, 'bin');
+  fs.mkdirSync(bin);
+  const fakeCodex = path.join(bin, 'codex');
+  fs.writeFileSync(fakeCodex, '#!/bin/bash\necho "$@" > "$DELEGATE_TEST_ARGS_FILE"\necho \'{"type":"turn.completed","thread_id":"thread-1","usage":{}}\'\nexit 0\n');
+  fs.chmodSync(fakeCodex, 0o755);
+  const cwd = path.join(dir, 'cwd');
+  fs.mkdirSync(cwd);
+  const briefFile = path.join(dir, 'brief.md');
+  fs.writeFileSync(briefFile, 'reply OK\n');
+  const scratchHome = path.join(dir, 'home');
+  fs.mkdirSync(scratchHome, { recursive: true });
+  const outRoot = path.join(dir, 'out');
+  const argsFile = path.join(dir, 'args.txt');
+  // Simulate a prior `run` that recorded model gpt-5.6-luna for thread-1.
+  writePriorJob(outRoot, 'codex-20260101-000000-000', { vendor: 'codex', idField: 'thread_id', id: 'thread-1', model: 'gpt-5.6-luna', startedAt: '2026-01-01T00:00:00.000Z' });
+
+  const env = {
+    HOME: scratchHome,
+    PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+    DELEGATE_NO_WINDOW: '1',
+    DELEGATE_CONSOLE_DIR: path.join(dir, 'consoles'),
+    DELEGATE_OUT: outRoot,
+    DELEGATE_TEST_ARGS_FILE: argsFile
+  };
+  const saved = {};
+  for (const key of Object.keys(env)) { saved[key] = process.env[key]; process.env[key] = env[key]; }
+  const originalError = console.error;
+  const errors = [];
+  console.error = (...args) => errors.push(args.join(' '));
+  try {
+    const result = await invoke('resume', 'codex', 'thread-1', briefFile, { cd: cwd });
+    const invokedArgs = fs.readFileSync(argsFile, 'utf8');
+    assert.match(invokedArgs, /model=gpt-5\.6-luna/, invokedArgs);
+    assert.ok(!errors.some(e => /no recorded model/.test(e)), 'must not warn when a prior model was found');
+
+    const meta = JSON.parse(fs.readFileSync(path.join(result.outDir, 'meta.json'), 'utf8'));
+    assert.equal(meta.model, 'gpt-5.6-luna', 'resumed job must record the resolved model so a chained resume keeps it');
+    assert.notEqual(meta.tierClass, 'unknown', 'guard tierClass must resolve the model, not fall back to unknown');
+  } finally {
+    console.error = originalError;
+    for (const key of Object.keys(env)) {
+      if (saved[key] == null) delete process.env[key]; else process.env[key] = saved[key];
+    }
+  }
+});
+
+// m9: the "no recorded model" resume warning must print via console.log (`WARNING: ...`), like
+// every other invoke()-level warning (preflight's, the guard's) — not via console.error, which
+// is reserved for actual per-vendor "ignored"/dropped-flag notices in buildJob.
+test('m9: invoke() prints the "no recorded model" resume warning via console.log(WARNING: ...), not console.error', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-invoke-resume-nowarn-'));
+  const bin = path.join(dir, 'bin');
+  fs.mkdirSync(bin);
+  const fakeCodex = path.join(bin, 'codex');
+  fs.writeFileSync(fakeCodex, '#!/bin/bash\necho \'{"type":"turn.completed","thread_id":"thread-unknown","usage":{}}\'\nexit 0\n');
+  fs.chmodSync(fakeCodex, 0o755);
+  const cwd = path.join(dir, 'cwd');
+  fs.mkdirSync(cwd);
+  const briefFile = path.join(dir, 'brief.md');
+  fs.writeFileSync(briefFile, 'reply OK\n');
+  const scratchHome = path.join(dir, 'home');
+  fs.mkdirSync(scratchHome, { recursive: true });
+  const outRoot = path.join(dir, 'out');
+
+  const env = {
+    HOME: scratchHome,
+    PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+    DELEGATE_NO_WINDOW: '1',
+    DELEGATE_CONSOLE_DIR: path.join(dir, 'consoles'),
+    DELEGATE_OUT: outRoot
+  };
+  const saved = {};
+  for (const key of Object.keys(env)) { saved[key] = process.env[key]; process.env[key] = env[key]; }
+  const originalError = console.error;
+  const originalLog = console.log;
+  const errors = [];
+  const logs = [];
+  console.error = (...args) => errors.push(args.join(' '));
+  console.log = (...args) => logs.push(args.join(' '));
+  try {
+    await invoke('resume', 'codex', 'thread-unknown', briefFile, { cd: cwd });
+    assert.ok(!errors.some(e => /no recorded model/.test(e)), 'must not go to console.error');
+    assert.ok(logs.some(l => /^WARNING: resume: no recorded model for codex thread-unknown/.test(l)), JSON.stringify(logs));
+  } finally {
+    console.error = originalError;
+    console.log = originalLog;
+    for (const key of Object.keys(env)) {
+      if (saved[key] == null) delete process.env[key]; else process.env[key] = saved[key];
+    }
+  }
 });

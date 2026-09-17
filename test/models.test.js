@@ -48,6 +48,22 @@ test('tierClass classifies every documented tier per vendor', () => {
   assert.equal(tierClass('unknownvendor', 'x'), 'unknown');
 });
 
+test('R16: resolveModel notes an unrecognized cursor tier to stderr but still passes it through', () => {
+  const originalError = console.error;
+  const errors = [];
+  console.error = (...args) => errors.push(args.join(' '));
+  try {
+    assert.equal(resolveModel('cursor', 'composer-2.5-fast'), 'composer-2.5-fast');
+    assert.ok(errors.some(e => /unknown cursor tier 'composer-2\.5-fast'/.test(e)), JSON.stringify(errors));
+
+    errors.length = 0;
+    assert.equal(resolveModel('cursor', 'auto'), 'auto');
+    assert.equal(errors.length, 0, 'known tiers must not print the note');
+  } finally {
+    console.error = originalError;
+  }
+});
+
 test('CRITICAL_TIER names the recommended tier per vendor', () => {
   assert.deepEqual(CRITICAL_TIER, {
     codex: 'sol', agy: 'opus', grok: 'best', claude: 'opus', cursor: null, opencode: null

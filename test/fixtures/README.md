@@ -19,6 +19,7 @@ verified doc/schema source (cited below) because no real capture was available a
 | `opencode.jsonl` | Synthetic — success stream shaped from the takopi OpenCode cheatsheet. |
 | `opencode-error.jsonl` | Synthetic — shaped from verified `error.data.message`/`statusCode` schema (takopi cheatsheet). |
 | `opencode-transient-error-then-success.jsonl` | Synthetic — a retryable `APIError` (`isRetryable:true`) followed by `text` + `step_finish reason:'stop'`. |
+| `opencode-multi-text.jsonl` | Synthetic — two distinct `text` parts (different `part.id`) separated by a `step_finish reason:'tool-calls'`, proving `extractResult` accumulates both instead of the later part overwriting the earlier one (R9). |
 | `grok.jsonl` | Synthetic — minimal success stream (no public grok CLI JSON schema doc found; shaped to match the `result`/`response`/`text` field-guessing already used by `extractResult`). |
 | `grok-402.jsonl` | Synthetic — shaped from the existing `lib/status.js` 402-substring convention. |
 | `grok-success-mentions-402.jsonl` | Synthetic — a successful result whose own text happens to mention "402", to prove the classifier doesn't false-positive on that (F5). |

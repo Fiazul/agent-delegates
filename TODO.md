@@ -4,9 +4,8 @@ Branch `node-cli` = master now. Node port done by a Codex `sol` worker, docs by 
 Linux smoke passed (agy run/resume/close, claude haiku run). **No review pass completed** — every vendor
 ran out of quota mid-review. Open items, in priority order:
 
-1. **Review the Node port** against `docs`-less brief items: safety (Codex never gets
-   `--dangerously-bypass-approvals-and-sandbox`; `install --statusline` must chain, never clobber, an
-   existing statusline command), queue handshake races, interrupt kills the whole process tree.
+1. ~~**Review the Node port**~~ **DONE (2026-09-17).** Opus review done; blocker+highs fixed on
+   branch `review-fixes`, rest deferred below.
 2. ~~**Bug: agy quota/stderr errors return exit 0.**~~ **DONE (2026-09-17).** Added `lib/failure.js`
    `classifyFailure(vendor, ctx)` — single shared classifier, audited across all six vendors
    (codex `turn.failed`/`error`, agy `result.status===ERROR`/`step_type:error_message`, claude/cursor
@@ -76,3 +75,63 @@ ran out of quota mid-review. Open items, in priority order:
     only supports `claude` (reports "unsupported, reports claude policy" for anything else); a
     Codex-orchestrated setup needs its own quota snapshot shape and probably its own
     `mode`/threshold defaults before `--self codex` can report anything real.
+
+## Review 2026-09-17 — deferred
+
+Findings from the same review pass as item 1 above, deferred rather than fixed on
+`review-fixes` (blocker + highs were fixed; these are lower-priority or design decisions):
+
+- R11 `lib/guard.js:20-26` (`DEFAULT_GUARD.paths = []`) — guard.paths is empty out of the box, so
+  the hard-critical path check is inert on a stock install; only `--critical` or a user-configured
+  `guard.paths` entry actually triggers it. This is a design decision (ship safe defaults, let the
+  operator opt a real prod path in), not a bug — documented here so it isn't rediscovered as a
+  surprise later.
+- R13/F14 `lib/console.js` — stale-pid-after-reboot (a `.exit`/lock file referencing a pid that no
+  longer exists post-reboot) and inline-vs-window consoles sharing the same job queue directory.
+  Out of scope for this pass (console.js was being edited concurrently by another worker); check
+  `lib/console.js` and `test/console.test.js` directly for current state.
+- R15 `extras/statusline.js` — needs a downstream self-reference guard (statusline invoking
+  something that could recurse back into itself) and a 2s timeout so a hung downstream command
+  can't block the prompt render.
+- Row-text coupling between `lib/status.js` (produces row strings) and `lib/route.js` (regexes
+  that parse them, `isCodexUsable`/`isAgyUsable`/etc.) — add a test that feeds real row strings
+  (captured from an actual `agent-delegates status` run) through `pickVendor` to catch drift if
+  either side's wording changes without the other.
+- Grok `--output-format json` may be pretty-printed (multi-line) rather than one-JSON-object-
+  per-line — the per-line event renderer would show nothing until the whole process completes.
+  Needs one real `grok` run to confirm the actual shape before deciding whether the renderer needs
+  a buffering fallback.
+- macOS/Windows paths untested (same as item 4 above, keep tracking there).
+- m4 (Opus review, 2026-09-18) `lib/console.js` `acquireSpawnLock`/`releaseSpawnLock` — the
+  `spawn.lock` file's mtime is never refreshed while a caller actually holds it (only checked
+  once, at acquire time, against `SPAWN_LOCK_STALE_MS`); a legitimately slow `spawnWindow()` (a
+  terminal emulator that's slow to launch) held past that window looks "stale" to a second
+  concurrent caller, which then clears and re-acquires it out from under the first — a TOCTOU on
+  the stale-clear itself (clear + re-create isn't atomic against a second racer doing the same
+  check at the same moment). Deferred: needs either a heartbeat-refresh on the lock (like `pid`'s
+  heartbeat) or an atomic take-over primitive; out of scope for this review-fixes pass.
+- m10 (Opus review, 2026-09-18) `lib/console.js` heartbeat vs. suspend/resume — the `pid` file's
+  heartbeat `setInterval` (10s) assumes the host stays running; a suspended (not crashed) host
+  resuming after `HEARTBEAT_STALE_MS` (60s) of real wall-clock sleep looks dead to `alive()`
+  even though the console process itself is still perfectly live, racing a second console into
+  believing it can take over the same window. Deferred: needs either a wall-clock-vs-monotonic
+  suspend detection or a longer/adaptive staleness window; out of scope for this review-fixes
+  pass.
+- M4 live-state gap: resume-with-model (`resolveResumeModel`/`buildJob`'s `-c model=...` /
+  vendor-specific `--model`/`-m` on resume) has only been live-verified for codex (`codex exec
+  resume --help`, confirmed no `-m`/`--add-dir`, has generic `-c`) and opencode (`opencode run
+  --help`, confirmed `--variant`, `-m`, `-s/--session`) as part of this review-fixes pass. agy,
+  grok, and cursor's resume-model flag behavior is still unverified against their real `--help`
+  output/live runs — pending. claude verified live 2026-09-18: haiku run → resume pinned haiku, meta.model recorded.
+- m4 (deferred): spawn lock never refreshed while held; stale-clear path can unlink a fresh lock
+  after a crash (lib/console.js acquireSpawnLock). Narrow, post-crash only.
+
+## Codex resume model drift (fixed 2026-09-18, residual note)
+- Before the fix, `resume` passed no model to any vendor; Codex fell back to `gpt-6-astra`, so
+  resumed luna/terra threads ran on the top tier. Now `resolveResumeModel()` in `lib/runner.js`
+  reuses the recorded model (or `--tier`/`--model`) and Codex gets `-c model=<slug>`.
+- Residual: Codex prints an `item.completed` `type:"error"` "This session was recorded with model X
+  but is resuming with Y" whenever a thread's last model differs. Informational, exit 0, not
+  classified as failure. Threads that drifted before the fix will show it once per resume
+  (reversed: recorded astra, resuming luna). New threads don't. Nothing to patch unless we want
+  to surface it as a one-line console note instead of the raw error item.

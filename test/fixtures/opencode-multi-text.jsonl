@@ -1,0 +1,5 @@
+{"type":"step_start","sessionID":"opencode-session-multi","part":{"type":"step-start"}}
+{"type":"text","sessionID":"opencode-session-multi","part":{"id":"msg_1","text":"first chunk"}}
+{"type":"step_finish","sessionID":"opencode-session-multi","part":{"type":"step-finish","reason":"tool-calls"}}
+{"type":"text","sessionID":"opencode-session-multi","part":{"id":"msg_2","text":"second chunk"}}
+{"type":"step_finish","sessionID":"opencode-session-multi","part":{"type":"step-finish","reason":"stop","tokens":{"input":10,"output":4},"cost":0}}

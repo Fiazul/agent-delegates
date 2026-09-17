@@ -25,6 +25,9 @@ command with no model turn at all.
 
 ## Before spawning any worker
 
+Hard cap: **3 concurrent workers** (all vendors, subagents, and reviewers combined) unless the
+user explicitly asks for more. At the cap, wait for one to finish before launching the next.
+
 Run `agent-delegates pick --json` and follow it (add `--critical` for production/live-data
 work) — see README.md "pick: the one-line pre-spawn decision".
 

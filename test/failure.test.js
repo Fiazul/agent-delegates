@@ -10,9 +10,16 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
+
+// M3: the invoke()-level tests below run with DELEGATE_NO_WINDOW=1, which spawns a real
+// `_console` subprocess. Without DELEGATE_QUIET its inherited stdio can land raw/ANSI console
+// output on this test process's own stdout fd and corrupt the node test runner's structured
+// reporting channel ("Unable to deserialize cloned data") — see lib/console.js's
+// Mirror.write/runInline.
+process.env.DELEGATE_QUIET = '1';
 const path = require('node:path');
 const test = require('node:test');
-const { classifyFailure } = require('../lib/failure');
+const { classifyFailure, isTerminalEvent } = require('../lib/failure');
 const { extractResult, invoke } = require('../lib/runner');
 
 function loadFixture(name) {
@@ -176,6 +183,64 @@ test('extractResult writes WORKER FAILED to last.md and sets exit-worthy failed=
     assert.match(lastMd, /^WORKER FAILED:/, `${vendor} last.md should start with WORKER FAILED`);
     assert.equal(lastMd.trim(), result.text);
   }
+});
+
+// F6: isTerminalEvent(vendor, event) — used by lib/console.js's grace-timer to notice a vendor
+// CLI said it's done even if the OS process itself never exits (reproduced live against agy).
+// Fixture-driven: every non-terminal line in each vendor's success fixture must read false, and
+// the fixture's own last/terminal line must read true, plus the fixture's own failure shape.
+
+test('isTerminalEvent: agy — only the result event is terminal', () => {
+  const raw = loadFixture('agy.jsonl');
+  const events = raw.trim().split('\n').map(line => JSON.parse(line));
+  const flags = events.map(event => isTerminalEvent('agy', event));
+  assert.deepEqual(flags, [false, false, false, true]);
+  const failFixture = loadFixture('agy-quota-exhausted.jsonl').trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(isTerminalEvent('agy', failFixture[failFixture.length - 1]), true, 'agy result with ERROR status is still terminal');
+});
+
+test('isTerminalEvent: codex — turn.completed and turn.failed are terminal, nothing else is', () => {
+  const raw = loadFixture('codex.jsonl');
+  const events = raw.trim().split('\n').map(line => JSON.parse(line));
+  const flags = events.map(event => isTerminalEvent('codex', event));
+  assert.deepEqual(flags, [false, false, false, false, false, true]);
+  const failEvents = loadFixture('codex-turn-failed.jsonl').trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(failEvents.map(event => isTerminalEvent('codex', event)), [false, false, true]);
+});
+
+test('isTerminalEvent: claude and cursor — only the result event is terminal', () => {
+  for (const vendor of ['claude', 'cursor']) {
+    const raw = loadFixture(`${vendor}.jsonl`);
+    const events = raw.trim().split('\n').map(line => JSON.parse(line));
+    const flags = events.map(event => isTerminalEvent(vendor, event));
+    assert.equal(flags.pop(), true, `${vendor}: last event (result) must be terminal`);
+    assert.ok(flags.every(flag => flag === false), `${vendor}: no event before the result should be terminal`);
+  }
+});
+
+// M1: a top-level opencode `error` is NOT terminal — classifyFailure()'s own opencode branch
+// documents that a retryable APIError can be followed by a later 'text'/step_finish:'stop' once
+// opencode's own retry succeeds; treating the error itself as terminal made the console.js grace
+// timer kill a recovering job as if the stream were already over.
+test('isTerminalEvent: opencode — only step_finish reason:stop is terminal, a top-level error is not', () => {
+  const raw = loadFixture('opencode.jsonl');
+  const events = raw.trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(events.map(event => isTerminalEvent('opencode', event)), [false, false, true]);
+  const errorEvents = loadFixture('opencode-error.jsonl').trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(errorEvents.map(event => isTerminalEvent('opencode', event)), [false, false]);
+});
+
+test('isTerminalEvent: grok — only the result object is terminal; an error may be a retry (matches classifyFailure recovery rule)', () => {
+  const resultEvent = JSON.parse(loadFixture('grok.jsonl').trim());
+  assert.equal(isTerminalEvent('grok', resultEvent), true);
+  const errorEvent = JSON.parse(loadFixture('grok-402.jsonl').trim());
+  assert.equal(isTerminalEvent('grok', errorEvent), false);
+});
+
+test('isTerminalEvent: unknown vendor or missing event never reads terminal', () => {
+  assert.equal(isTerminalEvent('bogus-vendor', { type: 'result' }), false);
+  assert.equal(isTerminalEvent('codex', null), false);
+  assert.equal(isTerminalEvent('codex', undefined), false);
 });
 
 test('classifyFailure leaves successful fixtures unfailed (regression guard)', () => {

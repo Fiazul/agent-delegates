@@ -16,7 +16,7 @@ Usage:
   agent-delegates pick [--critical] [--json] [--probe]
   agent-delegates run <vendor> <tier|model> <brief-file|-> [options]
   agent-delegates run auto <brief-file|-> [--priority v1,v2,...] [--max-hops N] [options]
-  agent-delegates resume <vendor> <id> <message-file|-> [--cd DIR] [--name N] [--full]
+  agent-delegates resume <vendor> <id> <message-file|-> [--cd DIR] [--name N] [--full] [--tier T | --model M]
   agent-delegates handoff <job-dir> <vendor> [tier] --cd DIR [--name N] [options]
   agent-delegates interrupt <vendor|name>
   agent-delegates close <vendor|name>
@@ -29,6 +29,8 @@ Run options:
   --ro           Codex read-only sandbox
   --effort E     model reasoning effort
   --add-dir D    extra working directory (repeatable)
+  --tier T       resume: pin this tier's model instead of the one the prior job recorded (if both --tier and --model are given, --tier wins); not valid on run — pass the model as the positional <tier|model> argument instead
+  --model M      resume: pin this raw model slug instead of the one the prior job recorded (if both --tier and --model are given, --tier wins); not valid on run — pass the model as the positional <tier|model> argument instead
   --full         Codex user configuration instead of clean room
   --safe         agy accept-edits mode (default is full permission)
   --yolo         Grok/Claude/Cursor/OpenCode full permission mode
@@ -69,7 +71,7 @@ function parseOptions(args) {
   const options = { addDir: [] };
   const positional = [];
   const boolean = new Set(['--ro', '--full', '--safe', '--yolo', '--statusline', '--hook', '--no-statusline', '--no-hook', '--no-path', '--uninstall', '--probe-grok', '--yes', '--skip-cli-install', '--json', '--critical', '--allow-small', '--no-preflight', '--probe', '--no-login']);
-  const values = new Map([['--cd', 'cd'], ['--name', 'name'], ['--effort', 'effort'], ['--add-dir', 'addDir'], ['--priority', 'priority'], ['--max-hops', 'maxHops'], ['--self', 'self'], ['--timeout', 'timeout'], ['--main', 'main'], ['--delegates', 'delegates'], ['--aliases', 'aliases'], ['--resolve-agent-conflict', 'resolveAgentConflict']]);
+  const values = new Map([['--cd', 'cd'], ['--name', 'name'], ['--effort', 'effort'], ['--add-dir', 'addDir'], ['--priority', 'priority'], ['--max-hops', 'maxHops'], ['--self', 'self'], ['--timeout', 'timeout'], ['--main', 'main'], ['--delegates', 'delegates'], ['--aliases', 'aliases'], ['--resolve-agent-conflict', 'resolveAgentConflict'], ['--tier', 'tier'], ['--model', 'model']]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (boolean.has(arg)) options[arg.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = true;
@@ -148,6 +150,13 @@ async function main(argv = process.argv.slice(2), dependencies = {}) {
         return;
       }
       if (positional.length !== 3) return die(`${command} requires vendor, ${command === 'run' ? 'tier/model' : 'id'}, and a brief file or -`);
+      // m6: `--tier`/`--model` only make sense on `resume` (pinning a follow-up's model, since
+      // the tier/model positional isn't available there) — `run` already takes the model as its
+      // positional <tier|model> argument, so a stray `--model` on `run` must error clearly rather
+      // than silently doing nothing (invoke() never even looks at options.model in run mode).
+      if (command === 'run' && (options.tier || options.model)) {
+        return die('--tier/--model are only valid on resume; run takes the model as its positional <tier|model> argument');
+      }
       const input = positional[2] === '-' ? await stdin() : '';
       const result = await invoke(command, positional[0], positional[1], positional[2], options, input);
       process.exitCode = result.code;

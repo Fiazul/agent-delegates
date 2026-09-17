@@ -68,6 +68,13 @@ node bin/cli.js handoff /path/to/out-dir codex terra --cd /path/to/repo   # cont
 - When Codex hits the 5-hour usage limit mid-run, the stream ends with `turn.failed`
   and the launcher exits 1 with a message including the reset time. Resume the same
   thread after the reset.
+- Codex's process exit code is unreliable on `resume`: seen live 2026-09-17 — `turn.completed` + passing
+  tests, yet the CLI exited 1 because of an unrelated background `codex_models_manager` refresh timeout on
+  stderr. Judge success from `last.md`/`turn.completed` (the failure classifier does), not the raw code.
+- `codex exec resume` has no `-m`/`--model` flag — pin the model via `-c model=<slug>`, otherwise
+  Codex silently resumes on its own default (astra, the most expensive tier) instead of the model
+  the thread was recorded with. Fixed 2026-09-18 (`lib/runner.js`'s `resolveResumeModel`, applied
+  to every vendor's resume branch, not just codex's).
 
 ### Antigravity
 - Gemini flash burned ~75% of the weekly Gemini bucket in a dozen runs (250k input
@@ -100,14 +107,19 @@ node bin/cli.js handoff /path/to/out-dir codex terra --cd /path/to/repo   # cont
 - Always pass `--cd` on `resume` — otherwise the worker resumes in the wrong directory.
 - Verify from artifact state (git status, file mtimes), not the worker's narrative.
 - `DELEGATE_NO_WINDOW=1` runs inline when no display is available.
+- `DELEGATE_QUIET=1` is test-only: it silences the console mirror (including the brief + vendor·model
+  header). Never export it globally.
 - Every `run`/`resume` job has a 90-minute default timeout (`--timeout MIN` /
   `DELEGATE_JOB_TIMEOUT_MIN`); a killed job exits 124 and is classified "timed out" like any
   other failure — it does not trigger a `run auto` hop.
 - The critical-work guard's keyword heuristic (brief text matched against `routing.json`'s
   `guard.keywords`/the built-in default list) only **warns** (`CRITICAL?`) — it never refuses a
   small/standard tier by itself. Only an explicit `--critical` flag or a `guard.paths` match
-  against `--cd`/`--add-dir` actually refuses. `resume` never refuses either way (the model was
-  fixed at thread creation) — it only warns.
+  against `--cd`/`--add-dir` actually refuses. `resume` never refuses either way — it only warns
+  (via `enforce()`'s resume branch, which now prints the resolved model, not the id passed in
+  place of a tier). The model can be pinned on a resumed thread with `resume --tier T` or
+  `--model M` (`resolveResumeModel()` in lib/runner.js; `--tier` wins if both are given) instead
+  of only ever inheriting whatever model the prior job in that thread recorded.
 - `install`'s per-vendor login check (found/installed CLIs) reuses `lib/status.js`'s `preflight` —
   the same function `run` calls before every job — so "ok"/"logged-out"/"unknown" wording always
   agrees between `install` and `run`. agy has no local login marker or auth subcommand, so its
