@@ -155,6 +155,58 @@ Claude needs a statusline snapshot; Codex queries its local auth; agy uses
 OpenCode uses auth-file presence plus `opencode models`. Credentials and email
 addresses are never displayed.
 
+## Auto routing and cross-vendor handoff
+
+```sh
+agent-delegates run auto BRIEF.md --cd "/path/to/repo"
+agent-delegates run auto BRIEF.md --priority agy,codex,grok --cd "/path/to/repo"
+agent-delegates run auto BRIEF.md --max-hops 1 --cd "/path/to/repo"
+agent-delegates handoff /path/to/out-dir codex terra --cd "/path/to/repo"
+```
+
+`run auto <brief-file|->` picks the first vendor with quota from a priority
+list, judged from the same status-row text `agent-delegates status` prints
+(installed, logged in, quota left), and runs the brief there. Default order
+is `agy, codex, grok, cursor, opencode, claude` — claude last because a
+missing rate-limit snapshot reads as "unknown" and is treated as usable, so
+it would otherwise mask real exhaustion upstream. `--priority` overrides the
+order (comma-separated vendor ids). `run auto` always uses each vendor's own
+default tier — agy flash, codex terra, grok best, claude sonnet, cursor auto,
+opencode free — on both the initial run and every hop; there is no per-run
+tier override, since the vendor isn't chosen until `pickVendor` runs and a
+tier name from one vendor's tier map means nothing on another vendor's.
+
+Unknown quota (a status row that can't confirm remaining quota one way or
+the other) is treated as usable for some vendors and unusable for others:
+
+| Vendor | Unknown-quota row text | Usable? |
+|--------|-------------------------|---------|
+| codex | `usage unavailable` | yes (unknown) |
+| grok | `unknown (--probe-grok)` | yes (unknown) |
+| opencode | `unknown` | yes (unknown) |
+| agy | `usage unavailable` / no gemini bucket | no (can't confirm) |
+| cursor | `unavailable` (anything but exact `ok`) | no (can't confirm) |
+
+**Hop rule: only quota exhaustion hops.** If the chosen vendor's run comes
+back exhausted (or fails for a quota-shaped reason — 429/402/rate-limit/quota
+text), `run auto` picks the next usable vendor from what's left and hands the
+job to it via `handoff`, printing `AUTO: <vendor> exhausted → handing off to
+<next>`. A non-quota failure (a bad brief, a bug the worker hit) never hops —
+it stops and returns that result, since burning two more vendors' quota won't
+fix a bug. `--max-hops N` caps how many times it will hop (default 2); once
+no usable vendor remains, or the cap is hit, it returns the last result as-is.
+
+`handoff <job-dir> <vendor> [tier] --cd DIR` builds a continuation brief for
+`<vendor>` from a finished job directory and starts a fresh job there. The
+continuation brief includes: the original brief text, the failure
+reason/classification from that job, `git status`/diff-stat for the working
+tree at handoff time, and the last worker message (`last.md`). This is
+**observable state only** — the failed worker's internal reasoning (why it
+chose an approach, what it considered and rejected) isn't in the job
+directory and can't be reconstructed, so the new vendor picks up from what
+changed on disk and what was said, not from a transcript of how it got
+there.
+
 ## Windows and logs
 
 One console per vendor/name shows the brief, model, narrative, tool activity,

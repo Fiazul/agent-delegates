@@ -40,3 +40,12 @@ Workers use these skills — each with `run`, `resume`, `interrupt`, `close`:
 | `delegate-opencode` | OpenCode |
 
 Routing guidance lives in `extras/claude-routing-rule.md`.
+
+## Auto routing and handoff
+
+| Command | Semantics |
+|---------|-----------|
+| `agent-delegates run auto BRIEF.md [--priority v1,v2,...] [--max-hops N] --cd DIR` | Runs the brief on the first vendor with quota (default order agy,codex,grok,cursor,opencode,claude); on quota exhaustion, hands off to the next usable vendor (up to `--max-hops`, default 2); a non-quota failure never hops |
+| `agent-delegates handoff JOB_DIR VENDOR [TIER] --cd DIR` | Builds a continuation brief from a finished job (original brief, failure reason, git status/diff-stat, last worker message) and starts a fresh job for `VENDOR` there |
+
+See README.md "Auto routing and cross-vendor handoff" for the full hop rule and what the continuation brief contains.

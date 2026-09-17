@@ -33,3 +33,26 @@ ran out of quota mid-review. Open items, in priority order:
 5. Renderer: confirm claude stream-json tool_use/tool_result rendering on a real run with tools.
 6. Quota lesson to keep in docs: Antigravity's Claude/GPT weekly bucket is ~2 Opus-sized jobs; Gemini flash
    uses ~250k input tokens per job.
+7. **`run auto` / `handoff` live smoke not yet run** (2026-09-17, brief W2). `lib/route.js`
+   `pickVendor`/`runAuto` are unit-tested against literal `lib/status.js` row strings and a fake
+   `invoke`/`handoff` (no live vendor calls made — would spend quota). Never exercised against a
+   real exhausted job or real `agent-delegates status` output. Before relying on it: run
+   `agent-delegates run auto BRIEF.md --cd DIR` once against a vendor near/at exhaustion and confirm
+   it actually hands off (prints `AUTO: <vendor> exhausted → handing off to <next>`, second job
+   directory has a continuation brief built by `lib/handoff.js`), and once against a non-quota
+   failure (bad brief) to confirm it does NOT hop.
+8. **`DEFAULT_TIER` duplicated** in `lib/handoff.js` and `lib/route.js` — move both copies to a
+   single source of truth in `lib/models.js` (it already owns `TIER_MAPS`/`resolveModel`).
+9. **`run --cd X auto brief` positional quirk**: `--cd` before the `auto` subcommand vs after
+   the brief file may parse differently depending on how `bin/cli.js` splits flags from
+   positionals for the `run` command — verify/document the accepted flag order for `run auto`.
+10. **Live smoke of a real hop still pending** (see item 7) — this is the same gap, tracked here
+    too since it blocks trusting `run auto` in production use.
+11. **`DELEGATE_WORKER=1` hard guard** planned: a worker launched by `agent-delegates` should not
+    itself be able to shell out to the `agent-delegates` CLI (recursive delegation) — needs an
+    env-var guard checked at CLI entry.
+12. **Token accounting command (`tokens`) planned** — surface per-job token usage (already
+    captured in `usage=` per invoke) as a rollup command across jobs/vendors.
+13. **Skill slimming + `--quiet` JSON output planned** — trim the skill docs and add a
+    machine-readable `--quiet`/JSON mode to `status`/`run` for scripting (e.g. `run auto` calling
+    itself, or an outer orchestrator polling status without parsing the table).

@@ -75,6 +75,7 @@ The orchestrator drops a job file, spends no tokens watching, and gets
 | unknown model | slugs from `~/.codex/models_cache.json`. |
 | Codex cannot `git commit` | The sandbox mounts `.git` read-only. The orchestrator commits; brief the worker "do not commit". |
 | Stream ends with `turn.failed`, exit 1 | Codex hit the 5-hour usage limit mid-run. The exit message includes the reset time. Resume the same thread after the reset window. |
+| Need to continue on a *different* vendor (quota/reset too far out) | Don't hand-roll a new brief — `agent-delegates handoff <job-dir> <vendor> [tier] --cd DIR` builds a continuation brief from the failed job's brief/meta/last.md/events/git-state and fires it at the new vendor. |
 
 Never use `--dangerously-bypass-approvals-and-sandbox`; `workspace-write` +
 `--add-dir` covers worktrees.
