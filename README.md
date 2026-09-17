@@ -43,8 +43,10 @@ is `claude`. Override with `--main claude|codex|cursor|all`.
 **Q2 (delegates)** decides which vendor CLIs get checked/offered for install
 (unselected vendors are never mentioned), sets `priority` in
 `~/.config/delegates/routing.json` (used by `run auto`/`pick`/the routing
-hooks) to the order chosen, and prints a `Next: authenticate — …` checklist of
-login commands for exactly the vendors picked. Answering Q2 (or passing
+hooks) to the order chosen, and — once the login check below has run — prints
+a `Next: authenticate — …` checklist of login commands for whichever picked
+vendors still need attention (empty when everything already checked out
+logged in). Answering Q2 (or passing
 `--delegates`) always writes `priority`, even if you pick the same vendors as
 the default — the *default* itself is silent about `priority` (a fully
 non-interactive `install` with no `--delegates` never touches an existing
@@ -71,9 +73,25 @@ to whatever `install` saved as `downstream` in
 
 Non-interactive installs do not prompt or hang. Without `--yes`, they print the
 commands needed and leave setup partial. After any install (and for an existing
-CLI), authentication remains unverified: authenticate separately with
-`codex login`, `agy`, `grok`, `claude`, `cursor-agent login`, or `opencode auth login`
-as appropriate. The install process never attempts to log in for you.
+CLI), `install` runs the same per-vendor login check `run` uses before every
+job and reports one of three honest states per vendor:
+
+- `<cli>: found, logged in.` — a deterministic marker confirms it (codex/grok's
+  `auth.json`, opencode's `auth.json`, cursor's `agent status`, or
+  `claude auth status`'s `loggedIn: true`).
+- `<cli>: found, NOT logged in — run '<login command>'.` — the same check
+  positively confirms it is *not* logged in.
+- `<cli>: found; login status could not be verified — run '<login command>'
+  if a job fails with an auth error.` — no reliable local check exists (agy
+  has no local auth marker or `auth`/`status` subcommand) or the check itself
+  couldn't get a clean answer.
+
+In an interactive terminal (and without `--yes` or `--no-login`), a
+`NOT logged in` result is followed by `Log in to <cli> now? [Y/n]`; answering
+yes runs the vendor's own login command interactively and re-checks. Use
+`--no-login` to print the checklist without ever prompting. The closing
+`Next: authenticate — …` line lists only the vendors still logged out or
+unverified after this step; it's omitted once everything checks out.
 
 The commands use the vendors' published installers: [Codex npm package](https://www.npmjs.com/package/@openai/codex),
 [Antigravity CLI](https://antigravity.google/cli/install.sh),

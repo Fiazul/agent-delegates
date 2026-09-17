@@ -935,6 +935,161 @@ test('vendor setup surfaces installer and post-install verification failures', a
   }), /not found after installation/);
 });
 
+test('vendor setup: auth check wording for ok / logged-out / unknown states, from an injected preflight', async () => {
+  const log = [];
+  const result = await setupVendorClis({
+    commandExists: () => true,
+    prompt: async () => false,
+    log: line => log.push(line),
+    platform: 'linux',
+    isTTY: false,
+    vendorIds: ['codex', 'grok', 'agy'],
+    preflight: async vendor => {
+      if (vendor === 'codex') return { ok: true, state: 'ok' };
+      if (vendor === 'grok') return { ok: false, state: 'logged-out', loginCommand: 'grok login' };
+      return { ok: true, skipped: true, state: 'unknown', loginCommand: 'agy' };
+    },
+  });
+  assert.ok(log.some(line => line === 'codex: found, logged in.'), JSON.stringify(log));
+  assert.ok(log.some(line => line === "grok: found, NOT logged in — run 'grok login'."), JSON.stringify(log));
+  assert.ok(log.some(line => line === "agy: found; login status could not be verified — run 'agy' if a job fails with an auth error."), JSON.stringify(log));
+  assert.deepEqual(result.authNeeded.sort(), ['agy', 'grok']);
+});
+
+test('vendor setup: non-TTY never prompts to log in, even when logged-out', async () => {
+  const log = [];
+  const prompted = [];
+  const result = await setupVendorClis({
+    commandExists: () => true,
+    prompt: async question => { prompted.push(question); return true; },
+    log: line => log.push(line),
+    platform: 'linux',
+    isTTY: false,
+    vendorIds: ['codex'],
+    preflight: async () => ({ ok: false, state: 'logged-out', loginCommand: 'codex login' }),
+    loginSpawn: async () => { throw new Error('must never spawn a login in non-TTY mode'); },
+  });
+  assert.deepEqual(prompted, []);
+  assert.deepEqual(result.authNeeded, ['codex']);
+});
+
+test('vendor setup: TTY logged-out prompts "Log in now?" and spawns the login command on yes', async () => {
+  const log = [];
+  const prompted = [];
+  const spawned = [];
+  let checkCount = 0;
+  const result = await setupVendorClis({
+    commandExists: () => true,
+    prompt: async question => { prompted.push(question); return true; },
+    log: line => log.push(line),
+    platform: 'linux',
+    isTTY: true,
+    vendorIds: ['codex'],
+    preflight: async () => {
+      checkCount++;
+      // First check (found): logged-out. Second check (after the login spawn): ok.
+      return checkCount === 1
+        ? { ok: false, state: 'logged-out', loginCommand: 'codex login' }
+        : { ok: true, state: 'ok' };
+    },
+    loginSpawn: async (command, args) => { spawned.push([command, ...args]); },
+  });
+  assert.deepEqual(prompted, ['Log in to codex now? [Y/n] ']);
+  assert.deepEqual(spawned, [['codex', 'login']]);
+  assert.ok(log.some(line => line === "codex: found, NOT logged in — run 'codex login'."));
+  assert.ok(log.some(line => line === 'codex: re-checked, logged in.'), JSON.stringify(log));
+  assert.deepEqual(result.authNeeded, []); // re-check came back 'ok' -> no longer needs attention
+});
+
+test('vendor setup: TTY logged-out prompt answered "no" never spawns a login', async () => {
+  const spawned = [];
+  const result = await setupVendorClis({
+    commandExists: () => true,
+    prompt: async () => false,
+    log() {},
+    platform: 'linux',
+    isTTY: true,
+    vendorIds: ['codex'],
+    preflight: async () => ({ ok: false, state: 'logged-out', loginCommand: 'codex login' }),
+    loginSpawn: async (command, args) => { spawned.push([command, ...args]); },
+  });
+  assert.deepEqual(spawned, []);
+  assert.deepEqual(result.authNeeded, ['codex']);
+});
+
+test('vendor setup: --yes never triggers the interactive login prompt (unattended install)', async () => {
+  const prompted = [];
+  const spawned = [];
+  const result = await setupVendorClis({
+    commandExists: () => true,
+    yes: true,
+    prompt: async question => { prompted.push(question); return true; },
+    log() {},
+    platform: 'linux',
+    isTTY: true,
+    vendorIds: ['codex'],
+    preflight: async () => ({ ok: false, state: 'logged-out', loginCommand: 'codex login' }),
+    loginSpawn: async (command, args) => { spawned.push([command, ...args]); },
+  });
+  assert.deepEqual(prompted, []);
+  assert.deepEqual(spawned, []);
+  assert.deepEqual(result.authNeeded, ['codex']);
+});
+
+test('vendor setup: --no-login skips the prompt even in a TTY, checklist only', async () => {
+  const prompted = [];
+  const spawned = [];
+  const result = await setupVendorClis({
+    commandExists: () => true,
+    noLogin: true,
+    prompt: async question => { prompted.push(question); return true; },
+    log() {},
+    platform: 'linux',
+    isTTY: true,
+    vendorIds: ['codex'],
+    preflight: async () => ({ ok: false, state: 'logged-out', loginCommand: 'codex login' }),
+    loginSpawn: async (command, args) => { spawned.push([command, ...args]); },
+  });
+  assert.deepEqual(prompted, []);
+  assert.deepEqual(spawned, []);
+  assert.deepEqual(result.authNeeded, ['codex']);
+});
+
+test('vendor setup: no preflight injected -> defaults to "unknown" for every found/installed vendor, no real check', async () => {
+  const log = [];
+  const result = await setupVendorClis({
+    commandExists: () => true,
+    log: line => log.push(line),
+    platform: 'linux',
+    isTTY: false,
+    vendorIds: ['codex'],
+  });
+  assert.ok(log.some(line => /login status could not be verified/.test(line)), JSON.stringify(log));
+  assert.deepEqual(result.authNeeded, ['codex']);
+});
+
+test('install: "Next: authenticate" line lists only vendors setupVendorClis reports as still needing attention', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  const log = [];
+  await install({
+    home: fakeHome, main: 'claude', delegates: 'codex,grok', commandExists: () => true,
+    setupVendorClis: async () => ({ existing: ['codex', 'grok'], installed: [], skipped: [], ready: true, authNeeded: ['grok'] }),
+    log: line => log.push(line)
+  });
+  assert.ok(log.some(line => line === 'Next: authenticate — grok'), JSON.stringify(log));
+});
+
+test('install: "Next: authenticate" line is omitted once every selected vendor reports ok', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  const log = [];
+  await install({
+    home: fakeHome, main: 'claude', delegates: 'codex,grok', commandExists: () => true,
+    setupVendorClis: async () => ({ existing: ['codex', 'grok'], installed: [], skipped: [], ready: true, authNeeded: [] }),
+    log: line => log.push(line)
+  });
+  assert.ok(!log.some(line => /Next: authenticate/.test(line)), JSON.stringify(log));
+});
+
 test('Windows Grok/OpenCode and unsupported OS use manual guidance without an installer', async () => {
   const installed = new Set();
   const windows = await setupVendorClis({

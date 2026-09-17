@@ -294,13 +294,49 @@ test('preflight(grok) refuses missing auth, passes with auth, warns on stale exh
   assert.match(warned.warning, /exhausted on 2026-09-01/);
 });
 
-test('preflight(claude/agy) skips with no deterministic check available', async () => {
-  const claude = await preflight('claude', '/tmp/whatever', {});
-  assert.equal(claude.ok, true);
-  assert.equal(claude.skipped, true);
+test('preflight(agy) is always unknown: no reliable local login marker exists', async () => {
   const agy = await preflight('agy', '/tmp/whatever', {});
   assert.equal(agy.ok, true);
   assert.equal(agy.skipped, true);
+  assert.equal(agy.state, 'unknown');
+  assert.equal(agy.loginCommand, 'agy');
+});
+
+test('preflight(claude) reports ok/logged-out/unknown from an injected claude auth status runner', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-preflight-claude-'));
+
+  const loggedIn = await preflight('claude', home, {
+    claudeAuthStatus: async () => ({ code: 0, stdout: JSON.stringify({ loggedIn: true, authMethod: 'claude.ai' }) })
+  });
+  assert.equal(loggedIn.ok, true);
+  assert.equal(loggedIn.state, 'ok');
+
+  const loggedOut = await preflight('claude', home, {
+    claudeAuthStatus: async () => ({ code: 0, stdout: JSON.stringify({ loggedIn: false }) })
+  });
+  assert.equal(loggedOut.ok, true, 'claude preflight fails OPEN even when logged out');
+  assert.equal(loggedOut.state, 'logged-out');
+  assert.match(loggedOut.warning, /not logged in/);
+  assert.equal(loggedOut.loginCommand, 'claude auth login');
+
+  // Command missing/failing entirely, and no ~/.claude/.credentials.json fallback marker either
+  // -> honest 'unknown', never a guess in either direction.
+  const unknown = await preflight('claude', home, {
+    claudeAuthStatus: async () => { throw new Error('ENOENT'); }
+  });
+  assert.equal(unknown.ok, true);
+  assert.equal(unknown.state, 'unknown');
+  assert.equal(unknown.skipped, true);
+
+  // The ~/.claude/.credentials.json fallback marker: command still fails, but the marker exists
+  // -> 'ok', not 'unknown'.
+  fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.claude', '.credentials.json'), '{}');
+  const fallbackOk = await preflight('claude', home, {
+    claudeAuthStatus: async () => { throw new Error('ENOENT'); }
+  });
+  assert.equal(fallbackOk.ok, true);
+  assert.equal(fallbackOk.state, 'ok');
 });
 
 test('invoke() refuses via injected preflight before any console/job work, and skips it on resume / --no-preflight', async () => {

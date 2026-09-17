@@ -39,6 +39,7 @@ Run options:
   --aliases yes|no  install: add cursor-agent/grok shell aliases pointing at their resolved binaries (opt-in; a TTY asks if omitted)
   --resolve-agent-conflict yes|no  install: apply (or skip) the proposed fix when something shadows Cursor's "agent" command (Grok or an unrecognized binary resolves first on PATH; a TTY asks if omitted; default No)
   --yes          install all missing vendor CLIs without prompting
+  --no-login     install: skip the interactive "log in now?" prompts (checklist only)
   --critical     mark this brief as critical work (prod/servers/live data): only large models may run it
   --allow-small  override the critical-work guard and allow a small/standard model (not recommended)
   --timeout MIN  kill the worker after MIN minutes (default 90, env DELEGATE_JOB_TIMEOUT_MIN); exit 124
@@ -66,7 +67,7 @@ function die(message) {
 function parseOptions(args) {
   const options = { addDir: [] };
   const positional = [];
-  const boolean = new Set(['--ro', '--full', '--safe', '--yolo', '--statusline', '--hook', '--no-statusline', '--no-hook', '--uninstall', '--probe-grok', '--yes', '--skip-cli-install', '--json', '--critical', '--allow-small', '--no-preflight', '--probe']);
+  const boolean = new Set(['--ro', '--full', '--safe', '--yolo', '--statusline', '--hook', '--no-statusline', '--no-hook', '--uninstall', '--probe-grok', '--yes', '--skip-cli-install', '--json', '--critical', '--allow-small', '--no-preflight', '--probe', '--no-login']);
   const values = new Map([['--cd', 'cd'], ['--name', 'name'], ['--effort', 'effort'], ['--add-dir', 'addDir'], ['--priority', 'priority'], ['--max-hops', 'maxHops'], ['--self', 'self'], ['--timeout', 'timeout'], ['--main', 'main'], ['--delegates', 'delegates'], ['--aliases', 'aliases'], ['--resolve-agent-conflict', 'resolveAgentConflict']]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];

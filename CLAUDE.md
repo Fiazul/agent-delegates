@@ -91,6 +91,10 @@ node bin/cli.js handoff /path/to/out-dir codex terra --cd /path/to/repo   # cont
   small/standard tier by itself. Only an explicit `--critical` flag or a `guard.paths` match
   against `--cd`/`--add-dir` actually refuses. `resume` never refuses either way (the model was
   fixed at thread creation) — it only warns.
+- `install`'s per-vendor login check (found/installed CLIs) reuses `lib/status.js`'s `preflight` —
+  the same function `run` calls before every job — so "ok"/"logged-out"/"unknown" wording always
+  agrees between `install` and `run`; agy has no reliable local login marker on any platform and
+  is always "unknown", never guessed as ok or logged-out.
 - `agent-delegates install` edits `~/.claude/settings.json` (statusLine + two hooks, on by
   default) — it always backs up the existing file to `settings.json.bak-<timestamp>` first, and
   merges rather than replaces (existing hooks/keys survive). A malformed existing
