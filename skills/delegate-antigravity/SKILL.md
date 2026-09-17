@@ -1,6 +1,6 @@
 ---
 name: delegate-antigravity
-description: Use when delegating a task to Antigravity (agy) — free-tier Gemini/Claude via the agy CLI — because the main agent's quota is low, user says "antigravity", "agy", "gemini worker", "use flash/pro", or wants a zero-cost second-vendor implementation. Headless agy auto-denies shell commands unless full-permission mode is used.
+description: Use when delegating a task to Antigravity (agy) — free-tier Gemini/Claude via the agy CLI — because the main agent's quota is low, user says "antigravity", "agy", "gemini worker", "use flash/pro", or wants a second-vendor implementation on Antigravity's own free-tier quota. Headless agy auto-denies shell commands unless full-permission mode is used.
 ---
 
 # Delegate to Antigravity (agy)

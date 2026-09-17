@@ -1,6 +1,6 @@
 ---
 name: delegates
-description: Zero-cost quota check for Claude, Codex, Antigravity, Grok, Cursor, and OpenCode. Use when the user types /delegates, asks how much quota is left, or before spawning any worker when the main agent's quota may be low.
+description: Quota check for Claude, Codex, Antigravity, Grok, Cursor, and OpenCode with no model API calls (reads local auth/usage files; the only cost is the tokens of the turn that invokes it). Use when the user types /delegates, asks how much quota is left, or before spawning any worker when the main agent's quota may be low.
 ---
 
 # /delegates — quota status
