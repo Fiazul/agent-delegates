@@ -1,0 +1,302 @@
+<title>agent-delegates</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Run Codex, Antigravity, Grok Build, Claude Code, Cursor, and OpenCode workers in reusable terminal windows from your main coding agent.">
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-alt: #f5f6f8;
+    --fg: #1a1d23;
+    --fg-muted: #565d6b;
+    --border: #e1e4e9;
+    --accent: #2f5fd6;
+    --accent-fg: #ffffff;
+    --code-bg: #1a1d23;
+    --code-fg: #e8eaed;
+    --pill-bg: #eef1f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14161a;
+      --bg-alt: #1c1f25;
+      --fg: #e8eaed;
+      --fg-muted: #a2a9b5;
+      --border: #2c3038;
+      --accent: #7ea1f5;
+      --accent-fg: #12141a;
+      --code-bg: #0e1013;
+      --code-fg: #d7dae0;
+      --pill-bg: #232732;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14161a;
+    --bg-alt: #1c1f25;
+    --fg: #e8eaed;
+    --fg-muted: #a2a9b5;
+    --border: #2c3038;
+    --accent: #7ea1f5;
+    --accent-fg: #12141a;
+    --code-bg: #0e1013;
+    --code-fg: #d7dae0;
+    --pill-bg: #232732;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55;
+    padding: 0 20px;
+  }
+  main {
+    max-width: 780px;
+    margin: 0 auto;
+  }
+  section {
+    padding-block: 40px;
+    border-bottom: 1px solid var(--border);
+  }
+  section:last-of-type { border-bottom: none; }
+  h1 {
+    font-size: 2rem;
+    margin: 0 0 8px;
+  }
+  h2 {
+    font-size: 1.3rem;
+    margin: 0 0 18px;
+  }
+  .pitch {
+    font-size: 1.05rem;
+    color: var(--fg-muted);
+    max-width: 60ch;
+    margin: 0 0 24px;
+  }
+  .hero {
+    padding-top: 56px;
+  }
+  code, pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.85rem;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 14px 16px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 0 0 12px;
+    max-width: 100%;
+  }
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 20px 0 8px;
+  }
+  .btn {
+    display: inline-block;
+    padding: 9px 16px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    color: var(--fg);
+  }
+  .btn.primary {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
+  }
+  .steps {
+    list-style: none;
+    counter-reset: step;
+    margin: 0;
+    padding: 0;
+  }
+  .steps li {
+    counter-increment: step;
+    position: relative;
+    padding: 0 0 18px 40px;
+    border-left: 2px solid var(--border);
+    margin-left: 14px;
+  }
+  .steps li:last-child { padding-bottom: 0; border-left-color: transparent; }
+  .steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: -15px;
+    top: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-size: 0.8rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .steps code { background: var(--pill-bg); padding: 1px 5px; border-radius: 4px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  @media (max-width: 520px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    background: var(--bg-alt);
+  }
+  .card h3 {
+    margin: 0 0 6px;
+    font-size: 0.95rem;
+  }
+  .card p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--fg-muted);
+  }
+  .card code {
+    background: var(--pill-bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  .table-wrap { overflow-x: auto; }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  th { color: var(--fg-muted); font-weight: 600; }
+  footer {
+    padding-block: 32px;
+    font-size: 0.85rem;
+    color: var(--fg-muted);
+  }
+  footer a { color: var(--fg-muted); }
+  a { color: var(--accent); }
+  .note {
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    margin-top: -4px;
+  }
+</style>
+
+<main>
+  <section class="hero">
+    <h1>agent-delegates</h1>
+    <p class="pitch">Run Codex, Antigravity, Grok Build, Claude Code, Cursor, and OpenCode workers in reusable terminal windows from your main coding agent.</p>
+    <pre><code>npx --yes github:Fiazul/agent-delegates install</code></pre>
+    <p class="note">Durable global install:</p>
+    <pre><code>npm install -g github:Fiazul/agent-delegates</code></pre>
+    <div class="cta-row">
+      <a class="btn primary" href="https://github.com/Fiazul/agent-delegates">GitHub repo</a>
+      <a class="btn" href="https://github.com/Fiazul/agent-delegates#readme">README</a>
+    </div>
+  </section>
+
+  <section>
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li>Write a brief describing the task, save it as <code>BRIEF.md</code>.</li>
+      <li>Run <code>agent-delegates run &lt;vendor&gt; &lt;tier&gt; BRIEF.md --cd repo</code>.</li>
+      <li>The worker runs in its own reusable terminal window, one per vendor/name.</li>
+      <li>Collect <code>last.md</code> and <code>exit</code> from the job's output directory, or <code>resume</code> the same thread with a follow-up brief.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Features</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Pace-based routing</h3>
+        <p>Compares Claude weekly usage to elapsed time in the window. <code>agent-delegates pick --json</code> returns the vendor/tier/command to run.</p>
+      </div>
+      <div class="card">
+        <h3><code>run auto</code> failover</h3>
+        <p>Picks the first vendor with quota from a priority list; on quota exhaustion, hands off to the next vendor. Non-quota failures never hop.</p>
+      </div>
+      <div class="card">
+        <h3>Cross-vendor handoff</h3>
+        <p><code>handoff &lt;job-dir&gt; &lt;vendor&gt; [tier]</code> builds a continuation brief from a finished job's brief, failure reason, git status/diff, and last worker message.</p>
+      </div>
+      <div class="card">
+        <h3>Critical-work guard</h3>
+        <p>Refuses small/standard models on production-shaped work. <code>--critical</code> or a <code>routing.json</code> <code>guard.paths</code> match requires a large tier; <code>--allow-small</code> overrides.</p>
+      </div>
+      <div class="card">
+        <h3>90-minute job timeout</h3>
+        <p>Every run/resume job is killed after <code>--timeout</code> minutes (default 90) and classified "timed out"; exit code 124.</p>
+      </div>
+      <div class="card">
+        <h3>Login preflight</h3>
+        <p>Codex, Grok, Cursor, and OpenCode get a cheap local auth check before a job is submitted, so it doesn't fail minutes later.</p>
+      </div>
+      <div class="card">
+        <h3>Quota status table</h3>
+        <p><code>agent-delegates status</code> shows CLI, remaining quota, and models for all six vendors.</p>
+      </div>
+      <div class="card">
+        <h3>Install wizard</h3>
+        <p>Asks which CLI is your main orchestrator and which delegates to wire up, then checks/offers to install the missing vendor CLIs.</p>
+      </div>
+      <div class="card">
+        <h3>Cursor/Grok <code>agent</code> conflict detection</h3>
+        <p>Both CLIs install a binary named <code>agent</code>. Install detects the PATH collision and offers to rename the duplicate aside.</p>
+      </div>
+      <div class="card">
+        <h3>Zero runtime deps, MIT</h3>
+        <p>No runtime npm dependencies, no Python, no jq, no build step. MIT licensed.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Vendors and tiers</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Vendor</th><th>CLI</th><th>Tiers</th><th>Critical-work tier</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>codex</td><td>codex</td><td>luna, terra, sol, astra</td><td>sol (or astra)</td></tr>
+          <tr><td>agy</td><td>agy</td><td>lite, flash, pro, sonnet, opus</td><td>opus</td></tr>
+          <tr><td>grok</td><td>grok</td><td>fast, best</td><td>best</td></tr>
+          <tr><td>claude</td><td>claude</td><td>haiku, sonnet, opus</td><td>opus</td></tr>
+          <tr><td>cursor</td><td>cursor-agent</td><td>auto, composer</td><td>none — refused unless --allow-small</td></tr>
+          <tr><td>opencode</td><td>opencode</td><td>free, go</td><td>none — refused unless --allow-small</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick commands</h2>
+    <pre><code>agent-delegates status
+agent-delegates pick --json
+agent-delegates run codex luna BRIEF.md --cd "/path/to/repo"
+agent-delegates run auto BRIEF.md --cd "/path/to/repo"
+agent-delegates resume codex THREAD_ID FOLLOWUP.md --cd "/path/to/repo"
+agent-delegates handoff /path/to/out-dir codex terra --cd "/path/to/repo"
+agent-delegates route-check --json</code></pre>
+  </section>
+
+  <footer>
+    <p>MIT licensed — <a href="https://github.com/Fiazul/agent-delegates/blob/master/LICENSE">LICENSE</a> · <a href="https://github.com/Fiazul/agent-delegates">repo</a></p>
+    <p>Built by Fiazul Haque</p>
+  </footer>
+</main>

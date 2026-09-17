@@ -4,6 +4,10 @@ Run Codex, Antigravity, Grok Build, Claude Code, Cursor, and OpenCode workers
 in reusable terminal windows. Give a worker a brief, follow up in the same
 conversation, and collect its report and execution artifacts.
 
+## Website
+
+https://fiazul.github.io/agent-delegates/
+
 ## Install
 
 Requires Node.js 18+, npm, and Git for GitHub installation. Vendor CLIs can be
