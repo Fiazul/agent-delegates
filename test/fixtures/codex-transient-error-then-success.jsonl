@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"codex-thread-transient-1"}
+{"type":"error","message":"stream error: broken pipe"}
+{"type":"item.completed","item":{"type":"agent_message","text":"DONE"}}
+{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":3}}

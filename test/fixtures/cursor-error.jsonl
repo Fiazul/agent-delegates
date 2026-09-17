@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","session_id":"cursor-session-fail-1","model":"Auto"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Checking."}]},"session_id":"cursor-session-fail-1"}

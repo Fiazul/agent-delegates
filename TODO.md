@@ -7,9 +7,26 @@ ran out of quota mid-review. Open items, in priority order:
 1. **Review the Node port** against `docs`-less brief items: safety (Codex never gets
    `--dangerously-bypass-approvals-and-sandbox`; `install --statusline` must chain, never clobber, an
    existing statusline command), queue handshake races, interrupt kills the whole process tree.
-2. **Bug: agy quota/stderr errors return exit 0.** Antigravity prints `error: Individual quota reached…`
-   on stderr, not in the stream-json; `lib/runner.js` only flags `type: error` events. Treat a non-empty
-   stderr `error:` line + empty result as failure (exit 1), like Grok 402.
+2. ~~**Bug: agy quota/stderr errors return exit 0.**~~ **DONE (2026-09-17).** Added `lib/failure.js`
+   `classifyFailure(vendor, ctx)` — single shared classifier, audited across all six vendors
+   (codex `turn.failed`/`error`, agy `result.status===ERROR`/`step_type:error_message`, claude/cursor
+   `result.is_error`/error subtypes/no-result-event-on-nonzero-exit, opencode `error.data.message`/429,
+   grok 402, plus cross-vendor stderr `error:` and bare-nonzero-exit guards). `extractResult()`/`invoke()`
+   in `lib/runner.js` call it as the single place of truth: on failure, exit file = 1, `last.md` =
+   `WORKER FAILED: <reason>` (+ reset hint when parseable), console prints `<VENDOR> EXHAUSTED — reroute
+   to <others>` when exhausted (grok keeps its `.last_402` marker; other vendors don't have an
+   equivalent marker mechanism yet). Tests: `test/failure.test.js` (fixture-driven, one
+   exhausted/failed fixture per vendor; `agy-quota-exhausted.jsonl` is a real 0%-quota capture, the rest
+   are synthetic from verified vendor doc shapes — see `test/fixtures/README.md` and the inline
+   comments in `lib/failure.js` for what's verified vs assumed). **This is the failover hook**: any orchestrator wiring auto-reroute-on-exhaustion should
+   watch `result.exhausted` / the `<VENDOR> EXHAUSTED` console line rather than re-deriving vendor
+   error shapes. `last.md` on failure is always the `WORKER FAILED: <reason>` banner followed by
+   the preserved worker body (whatever text/output the worker produced before failing, if any) —
+   never a truncation of real progress. Mid-stream error events (codex `error`, opencode
+   retryable `APIError`, grok `error`) only count as a failure when no terminal success signal
+   follows them later in the same stream (codex `turn.completed`/`agent_message`, opencode
+   `text`/`step_finish reason:'stop'`, grok a later non-empty result) — `turn.failed` is the one
+   codex signal that stays unconditionally fatal regardless of what precedes or follows it.
 3. **Codex smoke of the Node CLI not run** (Codex 5h window was exhausted). Run:
    `DELEGATE_OUT=/tmp/x node bin/cli.js run codex luna brief.md --cd /tmp/x --effort low`, then `resume`, then `close`.
 4. **macOS / Windows paths untested** (Terminal.app via osascript; `wt.exe` / `cmd /k`; junction→copy fallback).

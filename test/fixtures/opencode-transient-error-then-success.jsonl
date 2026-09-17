@@ -1,0 +1,4 @@
+{"type":"step_start","sessionID":"opencode-session-transient-1","part":{"type":"step-start"}}
+{"type":"error","timestamp":1767036065000,"sessionID":"opencode-session-transient-1","error":{"name":"APIError","data":{"message":"Rate limit exceeded","statusCode":429,"isRetryable":true}}}
+{"type":"text","sessionID":"opencode-session-transient-1","part":{"type":"text","text":"DONE"}}
+{"type":"step_finish","sessionID":"opencode-session-transient-1","part":{"type":"step-finish","reason":"stop","tokens":{"input":8,"output":2},"cost":0}}

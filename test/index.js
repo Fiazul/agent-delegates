@@ -5,3 +5,4 @@ require('./renderer.test');
 require('./install.test');
 require('./console.test');
 require('./runner.test');
+require('./failure.test');

@@ -70,3 +70,4 @@ No display → tmux fallback; `DELEGATE_NO_WINDOW=1` → plain inline run.
 | File landed in `~/.gemini/.../scratch/` | model treated "working dir" as its scratch; launcher states the absolute dir in the prompt. Check `git status`, not the narrative. |
 | Prompt too long for argv | keep briefs under ~100 KB; put bulk context in files the worker reads. |
 | Gemini flash burned ~75% of weekly bucket in a dozen runs | 250k input tokens per run is normal for flash. The `claude/gpt` bucket is separate. `agent-delegates status` shows both. Budget accordingly. |
+| Quota exhausted at 0%: stream ends `{"event":"result","result":{"status":"ERROR","response":"","error":"...RESOURCE_EXHAUSTED (code 429)...Resets in 144h14m57s."}}`, preceded by `step_update` events with `step_type:"error_message"` | `lib/failure.js` `classifyFailure()` now catches this (exit 1, `last.md` = `WORKER FAILED: ...`, console prints `ANTIGRAVITY EXHAUSTED — reroute to ...`) — no longer a silent exit 0. |
