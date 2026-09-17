@@ -15,3 +15,4 @@ require('./route.test');
 require('./handoff.test');
 require('./status.test');
 require('./cli.test');
+require('./skills.test');

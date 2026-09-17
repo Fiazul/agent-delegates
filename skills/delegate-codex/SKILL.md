@@ -40,6 +40,12 @@ agent-delegates close codex
 Brief filename `-` reads stdin. Raw model slugs (e.g. `gpt-5.6-sol`) work
 as the tier argument.
 
+## Writing the brief
+
+Use `brief-template.md` (same folder). Every brief needs Goal, Scope out,
+and Acceptance criteria at minimum — a brief without acceptance criteria
+produces a worker that guesses.
+
 ## Clean room (default)
 
 Runs with `CODEX_HOME=~/.codex-fresh`: auth only, no user config, hooks, MCP,

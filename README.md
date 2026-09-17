@@ -267,6 +267,11 @@ and `opencode`. Use `--name N` on run/resume for a named window, then
 `interrupt N` or `close N`.
 A brief filename of `-` reads stdin. Always repeat `--cd` on resume.
 
+Writing a brief: start from
+[`skills/delegate-codex/brief-template.md`](skills/delegate-codex/brief-template.md).
+A brief without Goal, Scope out, and Acceptance criteria produces a worker
+that guesses.
+
 ### Skills and tiers
 
 | Skill | Tiers |

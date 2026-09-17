@@ -40,6 +40,12 @@ agent-delegates close agy
 `--safe` selects accept-edits mode. `--add-dir D` adds workspace dirs.
 Brief filename `-` reads stdin. Vendor alias `antigravity` is accepted.
 
+## Writing the brief
+
+Use `../delegate-codex/brief-template.md`. Every brief needs Goal, Scope out,
+and Acceptance criteria at minimum — a brief without acceptance criteria
+produces a worker that guesses.
+
 ## Permissions
 
 Headless mode cannot prompt. `--mode accept-edits` auto-denies every shell

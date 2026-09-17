@@ -36,6 +36,12 @@ agent-delegates close cursor
 
 Brief filename `-` reads stdin.
 
+## Writing the brief
+
+Use `../delegate-codex/brief-template.md`. Every brief needs Goal, Scope out,
+and Acceptance criteria at minimum — a brief without acceptance criteria
+produces a worker that guesses.
+
 ## Permissions
 
 Default headless run uses `--trust` so the workspace is trusted without a

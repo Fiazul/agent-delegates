@@ -37,6 +37,12 @@ agent-delegates close claude
 
 Brief filename `-` reads stdin. `--add-dir D` adds directories.
 
+## Writing the brief
+
+Use `../delegate-codex/brief-template.md`. Every brief needs Goal, Scope out,
+and Acceptance criteria at minimum — a brief without acceptance criteria
+produces a worker that guesses.
+
 ## Permissions
 
 Default is `--permission-mode acceptEdits`: edits auto-approved, shell

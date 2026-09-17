@@ -36,6 +36,12 @@ agent-delegates close grok
 `--yolo` enables `--always-approve` (needed for briefs that run commands;
 headless mode can't prompt). Brief filename `-` reads stdin.
 
+## Writing the brief
+
+Use `../delegate-codex/brief-template.md`. Every brief needs Goal, Scope out,
+and Acceptance criteria at minimum — a brief without acceptance criteria
+produces a worker that guesses.
+
 ## Permissions
 
 Without `--yolo`, headless Grok denies permission requests. Use `--yolo`
