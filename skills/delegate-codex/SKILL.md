@@ -17,10 +17,15 @@ Critical work (`--critical`): only `sol`/`astra` allowed.
 |------|-------------|---------|---------|
 | `luna` | gpt-5.6-luna | Haiku | trivial lookups, formulaic generation |
 | `terra` | gpt-5.6-terra | Sonnet | **default** build / fix / test |
-| `sol` | gpt-5.6-sol | Opus | hard tasks, reviews |
-| `astra` | gpt-6-astra | Fable | hardest architecture / multi-system debugging |
+| `sol` | gpt-6.1-sol | Opus 5.5 (at effort high) | hard tasks, reviews |
+| `astra` | gpt-6-astra | > Opus 5.5 | hardest architecture / multi-system debugging |
 
 `--effort low|medium|high|xhigh|max` (default medium). Raise effort before tier.
+
+### Strengths — route by domain
+
+- **2D/3D/visual design** (UI layout, canvas/SVG, three.js/WebGL, game graphics, motion/visual polish): Codex `sol`/`astra` clearly beat Claude → prefer Codex.
+- **Backend logic** (services, data pipelines, business logic, integrations, server-code debugging): Claude Opus 5.5 beats `sol` → prefer Claude.
 
 ## Commands
 
@@ -37,7 +42,7 @@ agent-delegates close codex
 ```
 
 `--ro` selects read-only sandbox (reviews). `--add-dir D` adds writable dirs.
-Brief filename `-` reads stdin. Raw model slugs (e.g. `gpt-5.6-sol`) work
+Brief filename `-` reads stdin. Raw model slugs (e.g. `gpt-6.1-sol`) work
 as the tier argument.
 
 Resume reuses the recorded model; `--tier` wins over `--model`, and no record

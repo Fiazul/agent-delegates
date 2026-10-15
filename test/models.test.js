@@ -6,7 +6,7 @@ const { CRITICAL_TIER, TIER_CLASS, TIER_MAPS, canonicalVendor, resolveModel, tie
 
 test('tier maps cover every vendor and documented tier', () => {
   assert.deepEqual(TIER_MAPS.codex, {
-    luna: 'gpt-5.6-luna', terra: 'gpt-5.6-terra', sol: 'gpt-5.6-sol', astra: 'gpt-6-astra'
+    luna: 'gpt-5.6-luna', terra: 'gpt-5.6-terra', sol: 'gpt-6.1-sol', astra: 'gpt-6-astra'
   });
   assert.deepEqual(TIER_MAPS.agy, {
     lite: 'gemini-3.8-flash-low', flash: 'gemini-3.8-flash-high', pro: 'gemini-3.1-pro-high',
@@ -42,7 +42,7 @@ test('tierClass classifies every documented tier per vendor', () => {
   }
 
   assert.equal(tierClass('antigravity', 'flash'), 'small');
-  assert.equal(tierClass('codex', 'gpt-5.6-sol'), 'large');
+  assert.equal(tierClass('codex', 'gpt-6.1-sol'), 'large');
   assert.equal(tierClass('claude', 'claude-sonnet-5'), 'standard');
   assert.equal(tierClass('codex', 'some-unknown-slug'), 'unknown');
   assert.equal(tierClass('unknownvendor', 'x'), 'unknown');

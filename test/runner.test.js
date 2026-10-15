@@ -776,7 +776,7 @@ test('resolveResumeModel: explicit --tier wins over any recorded prior model', (
   try {
     writePriorJob(outRoot, 'luna-20260101-000000-000', { vendor: 'codex', idField: 'thread_id', id: 'thread-1', model: 'gpt-5.6-luna', startedAt: '2026-01-01T00:00:00.000Z' });
     const resolved = resolveResumeModel('codex', 'thread-1', { tier: 'sol' });
-    assert.equal(resolved.model, 'gpt-5.6-sol');
+    assert.equal(resolved.model, 'gpt-6.1-sol');
 
     const resolvedModelFlag = resolveResumeModel('codex', 'thread-1', { model: 'gpt-custom-slug' });
     assert.equal(resolvedModelFlag.model, 'gpt-custom-slug');

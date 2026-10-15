@@ -27,7 +27,7 @@ function decideNow() {
 
 function routingMessage(result, prefix = '') {
   const elapsed = result.elapsedPct == null ? '?' : Math.round(result.elapsedPct);
-  return `${prefix}Claude weekly usage ${result.claudeWk}% vs ${elapsed}% of week elapsed (${result.reason}). ROUTING RULE IN FORCE: unless the user named Opus/Fable for this task, any work beyond a ~5-line edit MUST go to an external worker — run \`agent-delegates pick --json\` and follow it. Trivial questions/reads exempt.`;
+  return `${prefix}Claude weekly usage ${result.claudeWk}% vs ${elapsed}% of week elapsed (${result.reason}). ROUTING RULE IN FORCE: unless the user named Opus for this task, any work beyond a ~5-line edit MUST go to an external worker — run \`agent-delegates pick --json\` and follow it. Trivial questions/reads exempt.`;
 }
 
 // Returns the string to print for UserPromptSubmit, or null to print nothing. `decideFn` is

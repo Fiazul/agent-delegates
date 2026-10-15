@@ -152,7 +152,7 @@ test('enforce refuses a standard model on critical work (only large passes)', ()
 });
 
 test('enforce passes a large model on critical work (codex sol, grok best)', () => {
-  const sol = enforce({ vendor: 'codex', tier: 'sol', model: 'gpt-5.6-sol', critical: true, reasons: ['x'], options: {}, mode: 'run' });
+  const sol = enforce({ vendor: 'codex', tier: 'sol', model: 'gpt-6.1-sol', critical: true, reasons: ['x'], options: {}, mode: 'run' });
   assert.equal(sol.ok, true);
   const grokBest = enforce({ vendor: 'grok', tier: 'best', model: 'grok-4.6', critical: true, reasons: ['x'], options: {}, mode: 'run' });
   assert.equal(grokBest.ok, true);
@@ -233,7 +233,7 @@ test('m3: enforce\'s resume warning prints the resolved model, not the thread/se
 });
 
 test('R10: enforce prints no critical warning on resume when the model is already large', () => {
-  const result = enforce({ vendor: 'codex', tier: 'sol', model: 'gpt-5.6-sol', critical: true, reasons: ['x'], options: {}, mode: 'resume' });
+  const result = enforce({ vendor: 'codex', tier: 'sol', model: 'gpt-6.1-sol', critical: true, reasons: ['x'], options: {}, mode: 'resume' });
   assert.equal(result.ok, true);
   assert.equal(result.warnings.some(w => /CRITICAL WORK on resume/.test(w)), false);
 });
@@ -247,7 +247,7 @@ test('R12: enforce warns when --allow-small actually overrides a refusal on crit
 });
 
 test('R12: enforce does not warn about --allow-small when the model is already large (override never needed)', () => {
-  const result = enforce({ vendor: 'codex', tier: 'sol', model: 'gpt-5.6-sol', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'run' });
+  const result = enforce({ vendor: 'codex', tier: 'sol', model: 'gpt-6.1-sol', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'run' });
   assert.equal(result.ok, true);
   assert.equal(result.warnings.some(w => /--allow-small override/.test(w)), false);
 });

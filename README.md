@@ -360,8 +360,8 @@ Status shows CLI, LEFT, and MODELS columns. Example:
 
 ```
 CLI     LEFT                                                    MODELS
-claude  wk 62% · 5h 100%                                       fable-5.1 opus-5 sonnet-5 haiku-4.5
-codex   wk 85% (reset 134h) · 5h 100%                          gpt-5.6-luna gpt-5.6-terra gpt-5.6-sol gpt-6-astra
+claude  wk 62% · 5h 100%                                       opus-5.5 sonnet-5.5 haiku-4.5
+codex   wk 85% (reset 134h) · 5h 100%                          gpt-5.6-luna gpt-5.6-terra gpt-6.1-sol gpt-6-astra
 agy     gemini wk 43% · claude/gpt wk 100%                     gemini-3.8-flash{l/m/h} gemini-3.1-pro{l/m/h} ...
 grok    logged in · quota via --probe-grok                     grok-4.5 grok-4.6
 cursor  included 85% left · resets Oct 16 (auto 85% · api 91%) auto composer-2.5 ...

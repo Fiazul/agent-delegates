@@ -11,12 +11,12 @@ const test = require('node:test');
 const { isHopWorthy, pickVendor, runAuto } = require('../lib/route');
 
 test('pickVendor: claude usable with wk N% > 0', () => {
-  const rows = [['claude', 'wk 42% · 5h 88%', 'fable-5.1 opus-5 sonnet-5 haiku-4.5']];
+  const rows = [['claude', 'wk 42% · 5h 88%', 'opus-5.5 sonnet-5.5 haiku-4.5']];
   assert.equal(pickVendor(rows, ['claude']), 'claude');
 });
 
 test('pickVendor: claude unusable at wk 0%', () => {
-  const rows = [['claude', 'wk 0% · 5h 12%', 'fable-5.1']];
+  const rows = [['claude', 'wk 0% · 5h 12%', 'opus-5.5']];
   assert.equal(pickVendor(rows, ['claude']), null);
 });
 
@@ -241,7 +241,7 @@ test('runAuto: nothing usable -> throws with tried list', async () => {
 test('runAuto: policy says stay on claude -> claude moved to front of priority', async () => {
   const rows = [
     ['agy', 'gemini wk 45% · claude/gpt wk 10%', '?'],
-    ['claude', 'wk 30% · 5h 12%', 'fable-5.1']
+    ['claude', 'wk 30% · 5h 12%', 'opus-5.5']
   ];
   const invokeCalls = [];
   const invoke = async (mode, vendor, tier) => {
