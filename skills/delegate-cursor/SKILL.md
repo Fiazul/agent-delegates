@@ -18,7 +18,8 @@ Critical work (`--critical`): none — cursor has no large tier and is refused o
 | `auto` | auto | **default** — Cursor picks |
 | `composer` | composer-2.5 | Cursor's Composer model |
 
-`--yolo` maps to `--force`. Raw model ids from `cursor-agent --list-models` also work.
+Cursor has no frontier tier: every `--yolo` launch is refused, including raw model ids.
+Raw model ids from `cursor-agent --list-models` work without `--yolo`.
 
 ## Commands
 
@@ -48,9 +49,9 @@ produces a worker that guesses.
 ## Permissions
 
 Default headless run uses `--trust` so the workspace is trusted without a
-prompt. Without `--yolo`, shell/tool approvals follow Cursor defaults.
-`--yolo` enables `--force` (allow commands unless explicitly denied).
-Scope briefs carefully when using `--yolo`.
+prompt. Shell/tool approvals follow Cursor defaults. The launcher never emits
+`--force`: full access requires a frontier tier, and neither `auto` nor `composer`
+qualifies. `--allow-small` cannot override the full-access refusal on any path.
 
 ## Where the user sees it
 

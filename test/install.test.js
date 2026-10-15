@@ -1502,7 +1502,7 @@ test('uninstall (F11): removes an emptied skills dir but NEVER a non-empty one (
   assert.equal(log.some(l => l === `removed empty dir ${codexRoot}`), false);
 });
 
-test('install (F7): a FOREIGN symlink at a target skill path is backed up like a real dir, not unlinked silently; our own link is relinked', async () => {
+test('review N3: a FOREIGN symlink at a target skill path is backed up like a real dir, not unlinked silently; our own link is relinked', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
   const root = path.join(fakeHome, '.claude', 'skills');
   fs.mkdirSync(root, { recursive: true });
@@ -1511,14 +1511,18 @@ test('install (F7): a FOREIGN symlink at a target skill path is backed up like a
   fs.symlinkSync(foreign, path.join(root, 'delegates'), 'dir');
   const log = [];
   await install({ home: fakeHome, main: 'claude', delegates: 'codex', skipCliInstall: true, commandExists: () => true, env: {}, log: l => log.push(l) });
-  const backups = fs.readdirSync(root).filter(n => n.startsWith('delegates.bak-'));
-  assert.equal(backups.length, 1, JSON.stringify(fs.readdirSync(root)));
-  assert.equal(fs.readlinkSync(path.join(root, backups[0])), foreign, 'foreign symlink preserved intact under the backup name');
+  const backupRoot = path.join(installHome(fakeHome), 'backups', 'claude');
+  assert.equal(fs.readdirSync(root).some(n => n.includes('.bak-')), false, 'backup must not load as a skill');
+  const backups = fs.readdirSync(backupRoot).filter(n => n.startsWith('delegates.bak-'));
+  assert.equal(backups.length, 1);
+  assert.equal(fs.readlinkSync(path.join(backupRoot, backups[0])), foreign, 'foreign symlink preserved intact under the backup name');
+  assert.ok(log.some(l => l.includes(path.join(backupRoot, backups[0]))), JSON.stringify(log));
   assert.ok(log.some(l => l.startsWith('backed up ') && /delegates\.bak-/.test(l)), JSON.stringify(log));
   assert.ok(fs.readlinkSync(path.join(root, 'delegates')).startsWith(pkgDir(fakeHome)), 'now linked to our pkg copy');
   // re-install: our own managed link is relinked in place, no new backup
   await install({ home: fakeHome, main: 'claude', delegates: 'codex', skipCliInstall: true, commandExists: () => true, env: {}, log() {} });
-  assert.equal(fs.readdirSync(root).filter(n => n.startsWith('delegates.bak-')).length, 1);
+  assert.equal(fs.readdirSync(root).some(n => n.includes('.bak-')), false);
+  assert.equal(fs.readdirSync(backupRoot).filter(n => n.startsWith('delegates.bak-')).length, 1);
 });
 
 test('install --main claude,codex: each dir gets delegates + selected delegates minus its own vendor; hooks only for claude', async () => {
@@ -1585,4 +1589,28 @@ test('F8 sibling: --delegates normalizes names like --self/priority (Antigravity
   assert.deepEqual(fs.readdirSync(path.join(fakeHome, '.claude', 'skills')).sort(), ['delegate-antigravity', 'delegate-codex', 'delegates']);
   const { configPath } = require('../lib/policy');
   assert.deepEqual(JSON.parse(fs.readFileSync(configPath(fakeHome), 'utf8')).priority, ['agy', 'codex']);
+});
+
+test('review N3: real directories and files are backed up outside each main skills directory', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-skill-backups-'));
+  const roots = { claude: '.claude', codex: '.codex', cursor: '.cursor', opencode: '.config/opencode' };
+  for (const [main, prefix] of Object.entries(roots)) {
+    const root = path.join(home, prefix, 'skills');
+    fs.mkdirSync(path.join(root, 'delegates'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'delegates', 'SKILL.md'), 'user skill');
+    fs.writeFileSync(path.join(root, 'delegate-grok'), 'user file');
+    const logs = [];
+    await install({ home, main, delegates: 'grok', skipCliInstall: true, commandExists: () => true, env: {}, log: l => logs.push(l) });
+    assert.equal(fs.readdirSync(root).some(n => n.includes('.bak-')), false, main);
+    const backupRoot = path.join(installHome(home), 'backups', main);
+    const names = fs.readdirSync(backupRoot);
+    assert.equal(names.length, 2, main);
+    for (const [prefix, tail, content] of [['delegates', 'SKILL.md', 'user skill'], ['delegate-grok', '', 'user file']]) {
+      const name = names.find(n => n.startsWith(`${prefix}.bak-`));
+      assert.ok(name, main);
+      const backup = path.join(backupRoot, name);
+      assert.equal(fs.readFileSync(tail ? path.join(backup, tail) : backup, 'utf8'), content);
+      assert.ok(logs.some(l => l.includes(backup)), JSON.stringify(logs));
+    }
+  }
 });

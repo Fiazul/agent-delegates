@@ -162,3 +162,19 @@ test('canonicalVendor: one normalizer (trim, lowercase, antigravity -> agy); non
   assert.equal(canonicalVendor('agy'), 'agy');
   assert.equal(canonicalVendor(undefined), undefined);
 });
+
+test('review M1: prototype vendor, tier, model and effort keys never resolve inherited map entries', () => {
+  const { effectiveClass, selectionClass, tierForModel, validateEffort } = require('../lib/models');
+  for (const key of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+    assert.throws(() => resolveModel(key, 'anything'), /unknown vendor/);
+    assert.equal(tierClass(key, 'anything'), 'unknown');
+    assert.equal(tierForModel(key, 'anything'), null);
+    for (const vendor of Object.keys(TIER_MAPS)) {
+      assert.equal(tierClass(vendor, key), 'unknown');
+      assert.equal(selectionClass(vendor, key, key, key), 'unknown');
+      if (vendor !== 'cursor') assert.throws(() => resolveSelection(vendor, key));
+    }
+    assert.throws(() => validateEffort('codex', 'gpt-6.1-sol', key), /allowed efforts/);
+    assert.equal(effectiveClass('codex', key, 'high'), 'unknown');
+  }
+});

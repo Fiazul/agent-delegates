@@ -33,8 +33,7 @@ agent-delegates interrupt grok
 agent-delegates close grok
 ```
 
-`--yolo` enables `--always-approve` (needed for briefs that run commands;
-headless mode can't prompt). Brief filename `-` reads stdin.
+`--yolo` on `best` enables `--always-approve`; `fast` is refused full access. Brief filename `-` reads stdin.
 Resume reuses the recorded model; `--tier` wins over `--model`, and no record
 prints a warning before using the vendor default. Grok passes `--effort` but
 warns that `--add-dir` is unsupported; both model flags are invalid on `run`.
@@ -47,8 +46,16 @@ produces a worker that guesses.
 
 ## Permissions
 
-Without `--yolo`, headless Grok denies permission requests. Use `--yolo`
-for briefs involving shell commands. Scope briefs to intended operations.
+Without `--yolo`, headless Grok denies permission requests. Scope briefs to intended operations.
+
+## Full access (`--yolo`) — frontier tiers only
+
+Only `best` (or `grok-4.6`) can use `--yolo` / `--always-approve`. `fast` and
+unknown raw models are refused, on run, resume, handoff and auto. Every elevated
+launch prints `ELEVATED:` and records `meta.elevated: true`.
+
+Before EVERY `--yolo` launch, ask the user: "Delegating <task> to <vendor> <model> (<tier>) with FULL
+access — approve?" One approval covers one launch.
 
 ## Where the user sees it
 

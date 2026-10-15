@@ -24,7 +24,10 @@ function withFakes(fn) {
     const outputs = {
       codex: '{"type":"turn.completed","thread_id":"thread-1","usage":{}}',
       claude: '{"type":"result","result":"OK","session_id":"sess-1","usage":{}}',
-      opencode: '{"type":"text","sessionID":"oc-1","part":{"id":"p1","text":"OK"}}'
+      opencode: '{"type":"text","sessionID":"oc-1","part":{"id":"p1","text":"OK"}}',
+      agy: '{"event":"result","conversation_id":"agy-1","result":{"response":"OK"}}',
+      grok: '{"session_id":"grok-1","result":"OK"}',
+      cursor: '{"type":"result","result":"OK","session_id":"cursor-1"}'
     };
     for (const vendor of Object.keys(outputs)) {
       const file = path.join(bin, vendor);
@@ -49,7 +52,7 @@ function withFakes(fn) {
     try {
       await fn({
         dir, cwd, briefFile, outRoot, logs,
-        opts: { cd: cwd, noPreflight: true, guardConfig: { keywords: [], paths: [] } },
+        opts: { cd: cwd, noPreflight: true, binsConfig: Object.fromEntries(Object.keys(outputs).map(v => [v, path.join(bin, v)])), guardConfig: { keywords: [], paths: [] } },
         spawned: vendor => fs.existsSync(argsFile(vendor)),
         args: vendor => fs.readFileSync(argsFile(vendor), 'utf8'),
         reset: () => { for (const v of Object.keys(outputs)) try { fs.unlinkSync(argsFile(v)); } catch {} logs.length = 0; },
@@ -189,12 +192,12 @@ test('codex --yolo with --ro is refused (contradiction)', withFakes(async ({ bri
   assert.equal(spawned('codex'), false);
 }));
 
-test('agy/grok/cursor yolo behaviour is not gated (unchanged)', () => {
+test('agy/grok/cursor yolo requires a frontier tier', () => {
   for (const [vendor, tier, model] of [['grok', 'fast', 'grok-4.5'], ['cursor', 'auto', 'auto'], ['agy', 'lite', 'gemini-3.8-flash-low']]) {
-    assert.deepEqual(yoloCheck(vendor, tier, model, ''), { ok: true, reason: '' });
+    assert.equal(yoloCheck(vendor, tier, model, '').ok, false);
     const verdict = enforce({ vendor, tier, model, critical: false, options: { yolo: true }, mode: 'run' });
-    assert.equal(verdict.ok, true);
-    assert.equal(verdict.elevated, false);
+    assert.equal(verdict.ok, false);
+    assert.notEqual(verdict.elevated, true);
   }
 });
 
@@ -330,7 +333,7 @@ test('F9: the ELEVATED mode= text shows the REAL flag per path (run -s, resume -
   assert.match(resumeLine, /mode=-c sandbox_mode=danger-full-access$/, resumeLine);
 }));
 
-test('F1: codex resume --full WITHOUT --yolo still pins sandbox_mode (never inherits user config); PERMISSIONS line matches', withFakes(async ({ outRoot, briefFile, opts, args, reset, logs }) => {
+test('F1: codex resume --full WITHOUT --yolo passes the sandbox_mode pin; PERMISSIONS line matches', withFakes(async ({ outRoot, briefFile, opts, args, reset, logs }) => {
   record(outRoot, 'codex', 'thr-1', { model: 'gpt-6.1-sol', tier: 'sol', effort: 'medium' });
   await invoke('resume', 'codex', 'thr-1', briefFile, { ...opts, full: true });
   let a = args('codex');
@@ -436,4 +439,159 @@ test('run auto --yolo without --effort: codex sol (medium) is skipped', withFake
   const { runAuto } = require('../lib/route');
   await assert.rejects(() => runAuto(briefFile, { ...opts, rows: [['codex', 'wk 40% · 5h 20%', '?']], priority: 'codex', yolo: true, respectPolicy: false, home: path.join(dir, 'home') }, ''), /no vendor with quota and an eligible full-access tier/);
   assert.equal(spawned('codex'), false);
+}));
+
+test('review M1: resume opencode --model resolves tier aliases and rejects invalid models before spawn', withFakes(async ({ briefFile, opts, args, spawned, reset }) => {
+  await invoke('resume', 'opencode', 'oc-x', briefFile, { ...opts, model: 'glm', yolo: true, critical: true });
+  assert.match(args('opencode'), /(^| )-m opencode-go\/glm-5\.3( |$)/);
+  assert.doesNotMatch(args('opencode'), /(^| )-m glm( |$)/);
+  for (const model of ['nonsense', 'constructor', '__proto__', 'toString']) {
+    reset();
+    await assert.rejects(() => invoke('resume', 'opencode', 'oc-x', briefFile, { ...opts, model }), /unknown opencode tier/);
+    assert.equal(spawned('opencode'), false, model);
+  }
+}));
+
+test('review M1: a model field never borrows the class of a tier alias or a mismatched tier', () => {
+  for (const vendor of Object.keys(TIER_MAPS)) {
+    for (const tier of Object.keys(TIER_MAPS[vendor])) {
+      if (tier === TIER_MAPS[vendor][tier]) continue;
+      const result = enforce({ vendor, tier: '', model: tier, critical: true, options: {}, mode: 'resume' });
+      assert.equal(result.ok, false, `${vendor} model=${tier}`);
+    }
+    for (const key of ['constructor', '__proto__', 'toString']) {
+      assert.equal(tierClass(vendor, key), 'unknown', `${vendor} ${key}`);
+    }
+  }
+  for (const vendor of ['agy', 'grok', 'claude', 'opencode']) {
+    const frontier = Object.keys(TIER_CLASS[vendor]).find(t => TIER_CLASS[vendor][t] === 'large');
+    const small = Object.keys(TIER_CLASS[vendor]).find(t => TIER_CLASS[vendor][t] !== 'large');
+    assert.equal(enforce({ vendor, tier: frontier, model: TIER_MAPS[vendor][small], critical: true, options: { yolo: true }, mode: 'run' }).ok, false, vendor);
+  }
+});
+
+test('review 8: agy/grok ineligible tiers and every cursor tier refuse yolo across run, resume and handoff without spawn', withFakes(async ({ dir, cwd, briefFile, opts, spawned, reset }) => {
+  const { handoff } = require('../lib/handoff');
+  const prior = path.join(dir, 'prior-review');
+  fs.mkdirSync(prior);
+  fs.writeFileSync(path.join(prior, 'meta.json'), JSON.stringify({ vendor: 'codex', model: 'gpt-6.1-sol', cwd }));
+  for (const vendor of ['agy', 'grok', 'cursor']) {
+    for (const [tier, cls] of Object.entries(TIER_CLASS[vendor])) {
+      if (cls === 'large') continue;
+      for (const launch of [
+        () => invoke('run', vendor, tier, briefFile, { ...opts, yolo: true }),
+        () => invoke('resume', vendor, 'session-x', briefFile, { ...opts, model: tier, yolo: true }),
+        () => invoke('resume', vendor, 'session-x', briefFile, { ...opts, tier, yolo: true }),
+        () => handoff(prior, vendor, tier, { ...opts, yolo: true })
+      ]) {
+        reset();
+        await assert.rejects(launch, vendor === 'cursor' ? /--yolo .* refused for cursor.*no frontier tier/ : refusal, `${vendor} ${tier}`);
+        assert.equal(spawned(vendor), false, `${vendor} ${tier}`);
+      }
+    }
+  }
+}));
+
+test('review 8: agy defaults to accept-edits on every tier and resume, including with safe', withFakes(async ({ briefFile, opts, args, reset, logs, lastMeta }) => {
+  for (const tier of Object.keys(TIER_MAPS.agy)) {
+    for (const safe of [false, true]) {
+      reset();
+      await invoke('run', 'agy', tier, briefFile, { ...opts, safe });
+      assert.match(args('agy'), /--mode accept-edits/);
+      assert.doesNotMatch(args('agy'), /--dangerously-skip-permissions/);
+      assert.ok(logs.includes('PERMISSIONS: accept-edits'));
+      assert.equal(logs.some(l => l.startsWith('ELEVATED:')), false);
+      assert.equal(lastMeta().elevated, false);
+    }
+  }
+  reset();
+  await invoke('resume', 'agy', 'agy-1', briefFile, { ...opts, model: 'flash' });
+  assert.match(args('agy'), /--model gemini-3\.8-flash-high/);
+  assert.match(args('agy'), /--mode accept-edits/);
+  assert.doesNotMatch(args('agy'), /--dangerously-skip-permissions/);
+}));
+
+test('review 8: agy opus and grok best yolo emit their flag, ELEVATED line and meta on run, resume, handoff and auto', withFakes(async ({ dir, cwd, briefFile, opts, args, reset, logs, lastMeta }) => {
+  const { handoff } = require('../lib/handoff');
+  const { runAuto } = require('../lib/route');
+  const prior = path.join(dir, 'prior-frontier');
+  fs.mkdirSync(prior);
+  fs.writeFileSync(path.join(prior, 'meta.json'), JSON.stringify({ vendor: 'codex', model: 'gpt-6.1-sol', cwd }));
+  for (const [vendor, tier, flag, row] of [
+    ['agy', 'opus', '--dangerously-skip-permissions', 'gemini wk 40% · claude/gpt wk 40%'],
+    ['grok', 'best', '--always-approve', 'logged in · quota via --probe-grok']
+  ]) {
+    for (const launch of [
+      () => invoke('run', vendor, tier, briefFile, { ...opts, yolo: true }),
+      () => invoke('resume', vendor, 'session-x', briefFile, { ...opts, model: tier, yolo: true }),
+      () => handoff(prior, vendor, tier, { ...opts, yolo: true }),
+      () => runAuto(briefFile, { ...opts, priority: vendor, rows: [[vendor, row, '?']], critical: true, yolo: true, respectPolicy: false, resolveBin: () => ({ command: 'fake' }), home: path.join(dir, 'home') })
+    ]) {
+      reset();
+      await launch();
+      assert.ok(args(vendor).includes(flag), `${vendor}: ${args(vendor)}`);
+      assert.ok(args(vendor).includes(TIER_MAPS[vendor][tier]));
+      assert.ok(logs.some(l => l.startsWith(`ELEVATED: vendor=${vendor} tier=${tier} model=${TIER_MAPS[vendor][tier]}`) && l.endsWith(`mode=${flag}`)), JSON.stringify(logs));
+      assert.equal(lastMeta().elevated, true);
+      assert.equal(lastMeta().tierClass, 'large');
+    }
+  }
+}));
+
+test('review 8: run auto skips cursor for yolo and agy default never bypasses', withFakes(async ({ dir, briefFile, opts, spawned, args, logs, reset }) => {
+  const { runAuto } = require('../lib/route');
+  await assert.rejects(() => runAuto(briefFile, { ...opts, priority: 'cursor', rows: [['cursor', 'logged in · no quota API', '?']], yolo: true, respectPolicy: false, home: path.join(dir, 'home') }), /no vendor with quota/);
+  assert.equal(spawned('cursor'), false);
+  assert.ok(logs.some(l => /cursor skipped.*no frontier tier/.test(l)), JSON.stringify(logs));
+  reset();
+  await runAuto(briefFile, { ...opts, priority: 'agy', rows: [['agy', 'gemini wk 40%', '?']], respectPolicy: false, home: path.join(dir, 'home') });
+  assert.match(args('agy'), /--mode accept-edits/);
+  assert.doesNotMatch(args('agy'), /--dangerously-skip-permissions/);
+}));
+
+test('review audit: every vendor checks and spawns the same resolved model on run, resume tier/model, handoff and auto', withFakes(async ({ dir, cwd, briefFile, opts, args, reset }) => {
+  const { handoff } = require('../lib/handoff');
+  const { runAuto } = require('../lib/route');
+  const { DEFAULT_TIER } = require('../lib/models');
+  const prior = path.join(dir, 'prior-audit');
+  fs.mkdirSync(prior);
+  fs.writeFileSync(path.join(prior, 'meta.json'), JSON.stringify({ vendor: 'codex', model: 'gpt-6.1-sol', cwd }));
+  for (const [vendor, tier, row] of [
+    ['codex', 'sol-high', 'wk 40% · 5h 20%'], ['claude', 'opus', 'wk 40% · 5h 20%'],
+    ['opencode', 'glm', 'logged in'], ['agy', 'opus', 'gemini wk 40% · claude/gpt wk 40%'],
+    ['grok', 'best', 'logged in'], ['cursor', 'composer', 'logged in · no quota API']
+  ]) {
+    for (const [launch, expectedTier] of [
+      [() => invoke('run', vendor, tier, briefFile, opts), tier],
+      [() => invoke('resume', vendor, 'session-x', briefFile, { ...opts, tier }), tier],
+      [() => invoke('resume', vendor, 'session-x', briefFile, { ...opts, model: tier }), tier],
+      [() => handoff(prior, vendor, tier, opts), tier],
+      [() => runAuto(briefFile, { ...opts, priority: vendor, rows: [[vendor, row, '?']], respectPolicy: false, home: path.join(dir, 'home') }), DEFAULT_TIER[vendor]]
+    ]) {
+      reset();
+      const result = await launch();
+      const meta = JSON.parse(fs.readFileSync(path.join(result.outDir, 'meta.json'), 'utf8'));
+      const model = TIER_MAPS[vendor][expectedTier];
+      assert.equal(meta.model, model);
+      const flag = vendor === 'codex' && meta.mode === 'resume' ? `-c model=${model}` : `${['codex', 'grok', 'opencode'].includes(vendor) ? '-m' : '--model'} ${model}`;
+      assert.ok(args(vendor).includes(flag), `${vendor}: ${args(vendor)}`);
+      assert.equal(meta.tierClass, TIER_CLASS[vendor][expectedTier]);
+    }
+  }
+}));
+
+test('review 8: buildJob refuses ineligible bypass flags even when called without invoke', () => {
+  const { buildJob } = require('../lib/runner');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-build-gate-'));
+  for (const vendor of Object.keys(TIER_MAPS)) {
+    for (const [tier, cls] of Object.entries(TIER_CLASS[vendor])) {
+      if (cls === 'large') continue;
+      assert.throws(() => buildJob(vendor, vendor, 'run', TIER_MAPS[vendor][tier], '', 'brief', dir, { cd: dir, yolo: true }), refusal, `${vendor} ${tier}`);
+    }
+  }
+});
+
+test('review 8: agy safe and yolo contradict each other before spawning', withFakes(async ({ briefFile, opts, spawned }) => {
+  await assert.rejects(() => invoke('run', 'agy', 'opus', briefFile, { ...opts, yolo: true, safe: true }), /--yolo .* and --safe .* contradict/);
+  assert.equal(spawned('agy'), false);
 }));

@@ -122,7 +122,8 @@ test('capList caps a list to max entries with a "+N more" summary', () => {
 test('permissionMode reports per-vendor bypass state', () => {
   assert.equal(permissionMode('codex', { ro: true }), 'sandbox read-only (no bypass)');
   assert.equal(permissionMode('codex', {}), 'sandbox workspace-write (no bypass)');
-  assert.match(permissionMode('agy', {}), /FULL BYPASS/);
+  assert.equal(permissionMode('agy', {}), 'accept-edits');
+  assert.match(permissionMode('agy', { yolo: true }), /FULL BYPASS/);
   assert.equal(permissionMode('agy', { safe: true }), 'accept-edits');
   assert.match(permissionMode('claude', { yolo: true }), /FULL BYPASS/);
   assert.equal(permissionMode('claude', {}), 'acceptEdits');
@@ -205,7 +206,7 @@ test('enforce never refuses when only suspected (critical: false), regardless of
 });
 
 test('enforce warns on critical work with full bypass permissions', () => {
-  const result = enforce({ vendor: 'agy', tier: 'opus', model: 'claude-opus-4-6-thinking', critical: true, reasons: ['x'], options: {}, mode: 'run' });
+  const result = enforce({ vendor: 'agy', tier: 'opus', model: 'claude-opus-4-6-thinking', critical: true, reasons: ['x'], options: { yolo: true }, mode: 'run' });
   assert.equal(result.ok, true);
   assert.ok(result.warnings.some(w => /bypass/i.test(w)));
   assert.ok(result.warnings.some(w => /destructive commands/.test(w)));
@@ -214,7 +215,7 @@ test('enforce warns on critical work with full bypass permissions', () => {
 test('enforce on resume: critical on an unresolvable model is refused (--allow-small overrides); bypass still warns on a large model', () => {
   const refused = enforce({ vendor: 'agy', tier: '', model: '', critical: true, reasons: ['x'], options: {}, mode: 'resume' });
   assert.equal(refused.ok, false);
-  const bypass = enforce({ vendor: 'agy', tier: 'opus', model: 'claude-opus-4-6-thinking', critical: true, reasons: ['x'], options: {}, mode: 'resume' });
+  const bypass = enforce({ vendor: 'agy', tier: 'opus', model: 'claude-opus-4-6-thinking', critical: true, reasons: ['x'], options: { yolo: true }, mode: 'resume' });
   assert.equal(bypass.ok, true);
   assert.ok(bypass.warnings.some(w => /bypass/i.test(w)));
 });

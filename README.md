@@ -107,7 +107,9 @@ On Windows, Antigravity, Claude, and Cursor use their published PowerShell
 installers. Grok and OpenCode Windows installer URLs are not verified, so the
 CLI prints manual guidance instead of guessing.
 Unsupported operating systems receive manual-install guidance and no download is attempted.
-Existing non-link directories are backed up as `<name>.bak-<timestamp>`.
+Existing foreign skill links, directories, and files are moved outside the skills directory
+to `~/.agent-delegates/backups/<main>/<name>.bak-<timestamp>` (Windows:
+`<install-home>/backups/<main>/...`). The installer logs the full backup path.
 The global install survives npm cache pruning.
 
 **Try-it-once (npx):**
@@ -334,9 +336,9 @@ orchestration guidance.
 | `--effort E` | all | reasoning effort; Codex tiers imply one (`sol-low` low, `sol` medium, `sol-high`/`astra` high), `--effort` overrides |
 | `--add-dir D` | all | extra working directory (repeatable) |
 | `--ro` | Codex | read-only sandbox |
-| `--full` | Codex | user configuration instead of clean room; repeat on resume. The sandbox is still pinned on resume |
-| `--safe` | agy | accept-edits mode (default is full permission) |
-| `--yolo` | Grok, Claude, Cursor, OpenCode, Codex | full permission mode. Codex/Claude/OpenCode: frontier tiers only (see "Full access gate") |
+| `--full` | Codex | user configuration instead of clean room; repeat on resume. A profile may override the resume sandbox pin (see below) |
+| `--safe` | agy | accept-edits mode (also the default); incompatible with `--yolo` |
+| `--yolo` | all | full access on frontier tiers only; Cursor has no frontier tier and always refuses (see "Full access gate") |
 | `--critical` | all | mark this brief as critical work (prod/servers/live data): a large-tier model is required (see "Critical work and permissions") |
 | `--allow-small` | all | override the critical-work guard and allow a small/standard model (not recommended) |
 | `--timeout MIN` | all | kill the worker after `MIN` minutes and classify the job "timed out" (default 90, env `DELEGATE_JOB_TIMEOUT_MIN`); exit code 124 |
@@ -350,12 +352,14 @@ Codex uses `workspace-write` (or `--ro`), with an auth-only `~/.codex-fresh`
 home. Codex never uses the sandbox-bypass flag; `--yolo` (frontier tiers only) selects the
 `danger-full-access` sandbox instead.
 
-Antigravity defaults to `--dangerously-skip-permissions` because headless
-`accept-edits` auto-denies shell commands. `--safe` selects accept-edits.
+Antigravity defaults to `--mode accept-edits`, which works in headless print
+mode. Shell commands may be denied in this mode. `--safe` also selects accept-edits;
+`--yolo` on `opus` selects `--dangerously-skip-permissions`.
 
 Grok's `--yolo` selects `--always-approve`. Claude defaults to `acceptEdits`;
-`--yolo` enables `--dangerously-skip-permissions`. Cursor's `--yolo` selects
-`--force`. OpenCode's `--yolo` selects `--auto`. Scope briefs to the intended
+`--yolo` on `opus` enables `--dangerously-skip-permissions`. Grok requires `best`
+for `--yolo`. Cursor always refuses `--yolo` and never emits `--force`.
+OpenCode's `--yolo` selects `--auto`. Scope briefs to the intended
 files and operations.
 
 **Job timeout:** every `run`/`resume` job is killed after `--timeout` minutes
@@ -376,6 +380,10 @@ and ALWAYS pins the sandbox with `-c sandbox_mode=<workspace-write|read-only|dan
 not), and passes `--effort`; it warns that
 `--add-dir` is unsupported. Cursor passes `--add-dir`; Grok/OpenCode warn when
 it is unsupported; OpenCode maps `--effort` to `--variant`.
+
+| Codex resume gotcha | Guidance |
+|---|---|
+| `--full` resume | A user Codex profile setting `sandbox_mode` may override the pin; keep profiles free of `sandbox_mode`. |
 
 **Preflight login check:** before submitting a job, `codex`/`grok`/`cursor`/
 `opencode` get a cheap local check that the vendor CLI is actually logged in,
@@ -635,15 +643,17 @@ is still standard, and `opencode free --effort high` is still small.
 
 ### Full access gate (`--yolo`)
 
-`--yolo` on **codex**, **claude** and **opencode** runs only on a frontier (class `large`) model/effort:
-codex `sol-high`, `sol --effort high`, `astra`; claude `opus`; opencode `glm`, `kimi` (and the
-allowlisted large raw slugs, see below). Everything else (codex `sol`/`sol-low` below effort high, claude `sonnet`,
-opencode `free`/unknown slugs) is refused with an error naming the eligible tiers, on `run`, `resume`,
-`handoff` and `run auto` (auto skips ineligible candidates with `AUTO: <vendor> skipped — <reason>`).
+`--yolo` on **every vendor** requires a frontier (class `large`) model/effort:
+codex `sol-high`, `sol --effort high`, `astra`; claude `opus`; opencode `glm`, `kimi` (and
+allowlisted large raw slugs); agy `opus`; grok `best`. Cursor has no frontier tier:
+every `--yolo` launch is refused, including raw model ids. All other ineligible model/effort
+pairs are refused on `run`, `resume` and `handoff`; `run auto` skips them with
+`AUTO: <vendor> skipped — <reason>`. A stay-on-Claude policy verdict uses `opus` under
+`--yolo` or critical work, or skips Claude if the selection is ineligible.
 Codex maps it to `-s danger-full-access` on `run` and `-c sandbox_mode=danger-full-access` on `resume`
 (never `--dangerously-bypass-approvals-and-sandbox`); `--ro --yolo` is refused. Elevated `astra` needs
 `--critical` on EVERY launch, including resuming a recorded astra thread. An opencode `--yolo` resume whose
-model is unrecorded/unknown is refused. The `ELEVATED:` line's `mode=` shows the real flag for that path. agy/grok/cursor are not gated. Every full-access launch prints
+model is unrecorded/unknown is refused. The `ELEVATED:` line's `mode=` shows the real flag for that path. Every full-access launch prints
 `ELEVATED: vendor=… tier=… model=… effort=… mode=…` and records `elevated: true` in `meta.json`.
 The CLI cannot verify user approval: the main agent must ask the user before EVERY `--yolo` launch
 (one approval = one launch, no standing grant) and call out risky actions (prod hosts, live price pushes,
@@ -685,13 +695,10 @@ Both `guard.paths` and `guard.keywords` live under the same
 - Full-bypass permission modes print an extra `WARNING: critical work with full bypass
   permissions on <vendor>; ...` line.
 
-**Default permission mode per vendor** (`lib/guard.js` `permissionMode`): `codex` is always
-sandboxed (`workspace-write`, or read-only with `--ro`) and never gets a bypass flag. `agy` runs
-with full bypass (`--dangerously-skip-permissions`) by default — pass `--safe` to restrict it to
-accept-edits. `claude` defaults to `acceptEdits`; `cursor` defaults to trust-workspace (no
-`--force`); `grok` and `opencode` default to approval prompts. `--yolo` grants full bypass on
-`claude`, `cursor`, `grok`, `opencode` and `codex` (full-access sandbox; codex/claude/opencode only on
-frontier tiers, see "Full access gate"; `agy` uses `--safe` instead of `--yolo`).
+**Default permission mode per vendor**: `codex` uses `workspace-write` (read-only with
+`--ro`); `agy` uses `accept-edits`; `claude` uses `acceptEdits`; `cursor` trusts the workspace
+without `--force`; `grok` and `opencode` use default approvals. Full access requires `--yolo`
+on a frontier model/effort pair for every vendor. `--allow-small` never overrides this gate.
 
 **`--allow-small`** overrides the tier refusal (not recommended) — the run proceeds on whatever
 tier was asked for, but still prints the bypass warning if applicable. It does not suppress the

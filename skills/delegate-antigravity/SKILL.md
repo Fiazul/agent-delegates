@@ -1,6 +1,6 @@
 ---
 name: delegate-antigravity
-description: Use when delegating a task to Antigravity (agy) — free-tier Gemini/Claude via the agy CLI — because the main agent's quota is low, user says "antigravity", "agy", "gemini worker", "use flash/pro", or wants a second-vendor implementation on Antigravity's own free-tier quota. Headless agy auto-denies shell commands unless full-permission mode is used.
+description: Use when delegating a task to Antigravity (agy) — free-tier Gemini/Claude via the agy CLI — because the main agent's quota is low, user says "antigravity", "agy", "gemini worker", "use flash/pro", or wants a second-vendor implementation on Antigravity's own free-tier quota. Headless runs default to accept-edits; full access requires --yolo on opus.
 ---
 
 # Delegate to Antigravity (agy)
@@ -37,7 +37,7 @@ agent-delegates interrupt agy
 agent-delegates close agy
 ```
 
-`--safe` selects accept-edits mode. `--add-dir D` adds workspace dirs.
+`--safe` selects accept-edits mode (also the default; incompatible with `--yolo`). `--add-dir D` adds workspace dirs.
 Brief filename `-` reads stdin. Vendor alias `antigravity` is accepted.
 Resume reuses the recorded model; `--tier` wins over `--model`, and no record
 prints a warning before using the vendor default. Those flags are invalid on `run`.
@@ -50,11 +50,19 @@ produces a worker that guesses.
 
 ## Permissions
 
-Headless mode cannot prompt. `--mode accept-edits` auto-denies every shell
-command (the model runs `pwd` first and dies). The launcher passes
-`--dangerously-skip-permissions` by default. `--safe` opts back into
-accept-edits for deliberately edit-only runs. Consequence: no sandbox beyond
-the working dir. Keep briefs scoped and review the diff.
+Headless print mode defaults to `--mode accept-edits`. Shell permission requests
+may be denied; verify the artifacts when a brief needs commands. `--safe` selects
+the same mode. Full bypass is never automatic, including on `opus`.
+
+## Full access (`--yolo`) — frontier tiers only
+
+Only `opus` (or its mapped raw slug) can use `--yolo`, which emits
+`--dangerously-skip-permissions`. Other tiers and unknown raw models are refused,
+on run, resume, handoff and auto. Every elevated launch prints `ELEVATED:` and
+records `meta.elevated: true`.
+
+Before EVERY `--yolo` launch, ask the user: "Delegating <task> to <vendor> <model> (<tier>) with FULL
+access — approve?" One approval covers one launch. Scope the brief to the intended operations.
 
 ## Where the user sees it
 

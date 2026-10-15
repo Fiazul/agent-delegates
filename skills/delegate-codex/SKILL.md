@@ -119,6 +119,7 @@ The orchestrator drops a job file, spends no tokens watching, and gets
 | resume errors `unexpected argument '--color'` | `exec resume` accepts fewer flags; always pass the same `--cd` as the run. |
 | worker says file "absent" on resume | forgot `--cd`; it resumed in the orchestrator's cwd. |
 | `failed to load skill ...` on stderr | harmless; a broken skill in `$CODEX_HOME/skills`. |
+| `--full` resume | A user Codex profile setting `sandbox_mode` may override the pin; keep profiles free of `sandbox_mode`. |
 | ~30 s + 90k input tokens before first edit | `--full` loaded user's skills. Clean-room default avoids it. |
 | `tier/model '…' not allowed for codex` | Only `sol-low`/`sol`/`sol-high`/`astra` (or raw `gpt-6.1-sol`/`gpt-6-astra`). Pick a tier. |
 | Codex cannot `git commit` | The sandbox mounts `.git` read-only. The orchestrator commits; brief the worker "do not commit". |

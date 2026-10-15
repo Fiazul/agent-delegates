@@ -60,3 +60,15 @@ test('rowVendorIds: claude + configured priority only; agy/grok/cursor hidden un
   assert.deepEqual(rowVendorIds(home, { all: true }), [...ROW_VENDORS]);
   assert.deepEqual(ROW_VENDORS, ['claude', 'codex', 'agy', 'grok', 'cursor', 'opencode']);
 });
+
+test('review m2: --probe-grok includes grok even outside configured or explicit priority', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { configPath } = require('../lib/policy');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-probe-grok-'));
+  fs.mkdirSync(path.dirname(configPath(home)), { recursive: true });
+  fs.writeFileSync(configPath(home), JSON.stringify({ priority: ['codex'] }));
+  assert.deepEqual(rowVendorIds(home, { probeGrok: true }), ['claude', 'codex', 'grok']);
+  assert.deepEqual(rowVendorIds(home, { probeGrok: true, priority: 'opencode' }), ['claude', 'grok', 'opencode']);
+});

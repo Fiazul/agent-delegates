@@ -188,7 +188,7 @@ async function withConsoleDir(dir, fn) {
 
 test('routeCheck: a fresh rows.json cache is used and probeRows is never called (H3)', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-rowscache-'));
-  const cachedVendorRows = [['agy', 'gemini wk 45% · claude/gpt wk 10%', '?']];
+  const cachedVendorRows = [['agy', 'gemini wk 45% · claude/gpt wk 10%', '?'], ['claude', 'no snapshot', '?']];
   fs.writeFileSync(path.join(dir, 'rows.json'), JSON.stringify({ ts: Date.now(), rows: cachedVendorRows }));
   await withConsoleDir(dir, async () => {
     let calls = 0;

@@ -672,7 +672,7 @@ test('runAuto --self codex: the main agent\'s own vendor is dropped from the pri
   assert.deepEqual(calls, ['opencode']);
 });
 
-test('F5: runAuto --self claude with a stay-on-claude verdict does NOT re-prepend claude; reports stay in-house', async () => {
+test('review N1: runAuto --self claude reports continuing with external candidates', async () => {
   const calls = [];
   const logs = [];
   const orig = console.log;
@@ -689,7 +689,7 @@ test('F5: runAuto --self claude with a stay-on-claude verdict does NOT re-prepen
     assert.equal(result.vendor, 'codex');
   } finally { console.log = orig; }
   assert.deepEqual(calls, ['codex'], 'claude never spawned under --self claude');
-  assert.ok(logs.some(l => /^AUTO: policy says stay in-house/.test(l)), JSON.stringify(logs));
+  assert.ok(logs.includes('AUTO: policy prefers in-house; --self claude, so continuing with external candidates'), JSON.stringify(logs));
   assert.equal(logs.some(l => /stay on Claude/.test(l)), false);
 });
 
@@ -729,4 +729,81 @@ test('F8: vendor names normalize identically for --self and priority entries (ca
     }, '');
   } finally { console.log = orig; }
   assert.deepEqual(calls, ['codex']);
+});
+
+test('review m3: a fresh cache missing a configured vendor is re-probed after priority changes', async () => {
+  const { cachedRows, writeRowsCache } = require('../lib/route');
+  const { configPath } = require('../lib/policy');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-config-cache-'));
+  const saved = process.env.DELEGATE_CONSOLE_DIR;
+  process.env.DELEGATE_CONSOLE_DIR = path.join(home, 'cache');
+  try {
+    const oldRows = [['codex', 'wk 40% · 5h 20%', '?']];
+    writeRowsCache(oldRows);
+    fs.mkdirSync(path.dirname(configPath(home)), { recursive: true });
+    fs.writeFileSync(configPath(home), JSON.stringify({ priority: ['codex', 'grok'] }));
+    let probes = 0;
+    const newRows = [...oldRows, ['grok', 'logged in · quota via --probe-grok', '?']];
+    const options = { home, probeRows: async () => { probes++; return newRows; } };
+    assert.deepEqual(await cachedRows(options), newRows);
+    assert.equal(probes, 1);
+    assert.deepEqual(await cachedRows(options), newRows);
+    assert.equal(probes, 1, 'complete cache is reused');
+    writeRowsCache(oldRows);
+    assert.deepEqual(await cachedRows({ ...options, priority: 'codex' }), oldRows);
+    assert.equal(probes, 1, 'explicit priority controls the required vendors');
+  } finally {
+    if (saved == null) delete process.env.DELEGATE_CONSOLE_DIR; else process.env.DELEGATE_CONSOLE_DIR = saved;
+  }
+});
+
+test('review N2: stay-on-claude policy chooses eligible opus for yolo/critical', async () => {
+  for (const flags of [{ yolo: true }, { critical: true }, { yolo: true, critical: true }, { yolo: true, critical: true, allowSmall: true }]) {
+    const calls = [];
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...a) => logs.push(a.join(' '));
+    try {
+      const result = await runAuto('-', {
+        ...flags, priority: 'grok', rows: [['claude', 'wk 40% · 5h 20%', '?'], ['grok', 'logged in', '?']],
+        decide: () => ({ route: 'claude', reason: 'quota available' }),
+        resolveBin: () => ({ command: 'fake' }),
+        invoke: async (mode, vendor, tier) => {
+          calls.push([vendor, tier]);
+          assert.equal(vendor, 'claude');
+          assert.equal(tier, 'opus', 'do not attempt sonnet before the frontier tier');
+          return { code: 0, outDir: '/tmp/fake', failed: false };
+        }
+      }, 'reply OK');
+      assert.equal(result.vendor, 'claude');
+      assert.deepEqual(calls, [['claude', 'opus']]);
+      assert.equal(logs.some(l => /claude skipped/.test(l)), false);
+    } finally { console.log = originalLog; }
+  }
+});
+
+test('review N2: an ineligible policy Claude candidate is skipped with a reason before invoke', async () => {
+  const guard = require('../lib/guard');
+  const originalEnforce = guard.enforce;
+  const originalLog = console.log;
+  const logs = [];
+  const calls = [];
+  guard.enforce = input => input.vendor === 'claude'
+    ? { ok: false, message: 'claude has no eligible frontier tier', warnings: [] }
+    : originalEnforce(input);
+  console.log = (...a) => logs.push(a.join(' '));
+  try {
+    const result = await runAuto('-', {
+      priority: 'grok', rows: [['claude', 'wk 40% · 5h 20%', '?'], ['grok', 'logged in', '?']], yolo: true,
+      decide: () => ({ route: 'claude', reason: 'quota available' }),
+      resolveBin: () => ({ command: 'fake' }),
+      invoke: async (mode, vendor) => { calls.push(vendor); return { code: 0, outDir: '/tmp/fake', failed: false }; }
+    }, 'reply OK');
+    assert.equal(result.vendor, 'grok');
+    assert.deepEqual(calls, ['grok']);
+    assert.ok(logs.some(l => /claude skipped.*no eligible frontier tier/.test(l)), JSON.stringify(logs));
+  } finally {
+    guard.enforce = originalEnforce;
+    console.log = originalLog;
+  }
 });

@@ -39,12 +39,12 @@ test('cursor and opencode jobs put the prompt as a trailing argument', () => {
   for (const vendor of ['cursor', 'opencode']) {
     const out = path.join(dir, vendor);
     fs.mkdirSync(out);
-    const { job } = buildJob(vendor === 'cursor' ? 'agent' : 'opencode', vendor, 'run', vendor === 'cursor' ? 'auto' : 'opencode/mimo-v2.5-free', '', 'A brief with "quotes"', out, { cd: dir, yolo: true });
+    const { job } = buildJob(vendor === 'cursor' ? 'agent' : 'opencode', vendor, 'run', vendor === 'cursor' ? 'auto' : 'opencode-go/glm-5.3', '', 'A brief with "quotes"', out, { cd: dir, yolo: vendor === 'opencode' });
     assert.equal(job.args.at(-1), fs.readFileSync(path.join(out, 'prompt.md'), 'utf8'));
     assert.match(job.args.at(-1), /SOLE executor/);
     if (vendor === 'cursor') {
       assert.ok(job.args.includes('--trust'));
-      assert.ok(job.args.includes('--force'));
+      assert.ok(!job.args.includes('--force'));
       assert.equal(job.args[job.args.indexOf('--workspace') + 1], dir);
     } else {
       assert.ok(job.args.includes('--auto'));
@@ -668,7 +668,7 @@ test('R7: codex resume pins the same sandbox_mode the run branch would use, plus
   assert.ok(!fullJob.args.includes('--disable'), JSON.stringify(fullJob.args));
   const { job: fullRo } = buildJob('codex', 'codex', 'resume', '', 'thread-1', 'follow-up', out, { cd: dir, full: true, ro: true });
   assert.ok(fullRo.args.includes('sandbox_mode=read-only'), JSON.stringify(fullRo.args));
-  const { job: fullYolo } = buildJob('codex', 'codex', 'resume', '', 'thread-1', 'follow-up', out, { cd: dir, full: true, yolo: true });
+  const { job: fullYolo } = buildJob('codex', 'codex', 'resume', 'gpt-6.1-sol', 'thread-1', 'follow-up', out, { cd: dir, full: true, yolo: true, effort: 'high' });
   assert.ok(fullYolo.args.includes('sandbox_mode=danger-full-access'), JSON.stringify(fullYolo.args));
   // exactly one sandbox_mode pin on every path
   for (const j of [writeJob, roJob, fullJob, fullRo, fullYolo]) assert.equal(j.args.filter(a => String(a).startsWith('sandbox_mode=')).length, 1, JSON.stringify(j.args));

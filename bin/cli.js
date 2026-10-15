@@ -30,10 +30,10 @@ Run options:
   --effort E     reasoning effort (codex: low|medium|high only; tiers imply one: sol-low=low, sol=medium, sol-high/astra=high; astra must be high)
   --add-dir D    extra working directory (repeatable)
   --tier T       resume: pin this tier's model instead of the one the prior job recorded (if both --tier and --model are given, --tier wins); not valid on run — pass the model as the positional <tier|model> argument instead
-  --model M      resume: pin this raw model slug instead of the one the prior job recorded (if both --tier and --model are given, --tier wins); not valid on run — pass the model as the positional <tier|model> argument instead
+  --model M      resume: resolve and pin this tier/model instead of the one the prior job recorded (if both --tier and --model are given, --tier wins); not valid on run — pass the model as the positional <tier|model> argument instead
   --full         Codex user configuration instead of clean room
-  --safe         agy accept-edits mode (default is full permission)
-  --yolo         full permission mode. Grok/Cursor/agy: as before. FULL ACCESS for Codex (danger-full-access sandbox) / Claude / OpenCode is frontier tiers only (codex sol-high | sol --effort high | astra; claude opus; opencode glm | kimi), refused otherwise; the main agent must ask the user before EVERY --yolo launch
+  --safe         agy accept-edits mode (also the default; incompatible with --yolo)
+  --yolo         full access is frontier tiers only for every vendor (codex sol-high | sol --effort high | astra; claude opus; opencode glm | kimi; agy opus; grok best); Cursor has no frontier tier and always refuses; the main agent must ask the user before EVERY --yolo launch
   --priority v1,v2,...  vendor try-order for 'run auto' (default codex,opencode,claude)
   --max-hops N   max vendor attempts for 'run auto'
   --main W       install: which CLI is the main orchestrator (claude|codex|cursor|opencode|all, or a comma list like claude,codex; each main gets delegates + the selected delegates' skills minus its own vendor; default claude; a TTY asks if omitted)
