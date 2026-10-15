@@ -27,17 +27,17 @@ Run options:
   --cd DIR       working directory
   --name N       reusable window name
   --ro           Codex read-only sandbox
-  --effort E     model reasoning effort
+  --effort E     reasoning effort (codex tiers imply one: sol-low=low, sol=medium, sol-high/astra=high)
   --add-dir D    extra working directory (repeatable)
   --tier T       resume: pin this tier's model instead of the one the prior job recorded (if both --tier and --model are given, --tier wins); not valid on run — pass the model as the positional <tier|model> argument instead
   --model M      resume: pin this raw model slug instead of the one the prior job recorded (if both --tier and --model are given, --tier wins); not valid on run — pass the model as the positional <tier|model> argument instead
   --full         Codex user configuration instead of clean room
   --safe         agy accept-edits mode (default is full permission)
   --yolo         Grok/Claude/Cursor/OpenCode full permission mode
-  --priority v1,v2,...  vendor try-order for 'run auto' (default agy,codex,grok,cursor,opencode,claude)
+  --priority v1,v2,...  vendor try-order for 'run auto' (default codex,opencode,claude)
   --max-hops N   max vendor attempts for 'run auto'
   --main W       install: which CLI is the main orchestrator (claude|codex|cursor|all; default claude; a TTY asks if omitted)
-  --delegates v1,v2,...  install: which delegate vendors to set up (agy,codex,grok,claude,cursor,opencode; default agy,codex,grok; a TTY asks if omitted)
+  --delegates v1,v2,...  install: which delegate vendors to set up (agy,codex,grok,claude,cursor,opencode; default codex,opencode; a TTY asks if omitted)
   --aliases yes|no  install: add cursor-agent/grok shell aliases pointing at their resolved binaries (opt-in; a TTY asks if omitted)
   --resolve-agent-conflict yes|no  install: apply (or skip) the proposed fix when something shadows Cursor's "agent" command (Grok or an unrecognized binary resolves first on PATH; a TTY asks if omitted; default No)
   --yes          install all missing vendor CLIs without prompting

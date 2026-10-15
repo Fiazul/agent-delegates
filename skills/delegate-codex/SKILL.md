@@ -1,6 +1,6 @@
 ---
 name: delegate-codex
-description: Use when delegating a task to a Codex (OpenAI) worker — user says "codex", "summon codex", "use sol/astra/terra/luna", wants a second-vendor opinion, or the main agent's quota is low. Codex runs non-interactively via `codex exec`; hangs, wrong model slugs, sandbox git restrictions, and 5-hour usage limits are the usual failures.
+description: Use when delegating a task to a Codex (OpenAI) worker — user says "codex", "summon codex", "use sol/astra", wants a second-vendor opinion, or the main agent's quota is low. Codex runs non-interactively via `codex exec`; hangs, wrong model slugs, sandbox git restrictions, and 5-hour usage limits are the usual failures.
 ---
 
 # Delegate to Codex
@@ -9,23 +9,27 @@ Codex-side worker for any main agent. Same orchestration rules: brief with
 constraints + acceptance criteria, worker is sole executor, review the diff
 afterwards. The launcher prepends the standard worker preamble.
 
-Critical work (`--critical`): only `sol`/`astra` allowed.
+Critical work (`--critical`): only `sol-high`/`astra` allowed (use `sol-high`; `astra` only for visual work below).
 
 ## Tier ladder (orchestrator picks)
 
-| Tier | Codex model | ~Claude | Use for |
-|------|-------------|---------|---------|
-| `luna` | gpt-5.6-luna | Haiku | trivial lookups, formulaic generation |
-| `terra` | gpt-5.6-terra | Sonnet | **default** build / fix / test |
-| `sol` | gpt-6.1-sol | Opus 5.5 (at effort high) | hard tasks, reviews |
-| `astra` | gpt-6-astra | > Opus 5.5 | hardest architecture / multi-system debugging |
+One model, `gpt-6.1-sol`; the tier sets effort. Size the task, pick the tier.
 
-`--effort low|medium|high|xhigh|max` (default medium). Raise effort before tier.
+| Tier | Codex model | Effort | Use for |
+|------|-------------|--------|---------|
+| `sol-low` | gpt-6.1-sol | low | simple: lookups, formulaic edits |
+| `sol` | gpt-6.1-sol | medium | **default** standard build / fix / test |
+| `sol-high` | gpt-6.1-sol | high | hard tasks, reviews, critical (non-visual) work |
+| `astra` | gpt-6-astra | high | **critical 2D/3D/visual design work ONLY** — never for backend, refactors, reviews, or "hardest" non-visual tasks |
+
+Nothing else is selectable: `luna`/`terra` and any other model slug are rejected with an error
+listing the allowed tiers. `--effort E` overrides the tier's effort (default per tier above).
+Each run logs `SELECT: vendor=codex tier=… model=… effort=… why=…`.
 
 ### Strengths — route by domain
 
-- **2D/3D/visual design** (UI layout, canvas/SVG, three.js/WebGL, game graphics, motion/visual polish): Codex `sol`/`astra` clearly beat Claude → prefer Codex.
-- **Backend logic** (services, data pipelines, business logic, integrations, server-code debugging): Claude Opus 5.5 beats `sol` → prefer Claude.
+- **2D/3D/visual design** (UI layout, canvas/SVG, three.js/WebGL, game graphics, motion/visual polish): Codex clearly beats Claude → prefer Codex (`sol`/`sol-high`; `astra` only when the visual work is critical).
+- **Backend logic** (services, data pipelines, business logic, integrations, server-code debugging): Claude Opus 5.5 beats `sol` → prefer Claude (`opus`).
 
 ## Commands
 
@@ -35,18 +39,19 @@ If `agent-delegates` exits 127 (not installed globally), use
 re-downloads the package every run.
 
 ```sh
-agent-delegates run codex terra BRIEF.md --cd /path/to/repo --name my-task
+agent-delegates run codex sol BRIEF.md --cd /path/to/repo --name my-task
 agent-delegates resume codex THREAD_ID FOLLOWUP.md --cd /path/to/repo [--tier T | --model M]
 agent-delegates interrupt codex      # or interrupt my-task
 agent-delegates close codex
 ```
 
 `--ro` selects read-only sandbox (reviews). `--add-dir D` adds writable dirs.
-Brief filename `-` reads stdin. Raw model slugs (e.g. `gpt-6.1-sol`) work
-as the tier argument.
+Brief filename `-` reads stdin. Only the two allowlisted slugs (`gpt-6.1-sol` = tier
+`sol`, `gpt-6-astra` = `astra`) work as the tier argument; any other raw slug is rejected.
 
-Resume reuses the recorded model; `--tier` wins over `--model`, and no record
-prints a warning before using the vendor default. It pins model with `-c model=<slug>`,
+Resume reuses the recorded model and effort; `--tier` wins over `--model` (both allowlist-checked);
+a recorded model that is no longer allowed (e.g. `gpt-5.6-luna`) is remapped to `gpt-6.1-sol` with a
+logged line, and no record pins `gpt-6.1-sol` with a warning (never Codex's own default). It pins model with `-c model=<slug>`,
 sandbox with `-c sandbox_mode=` plus `--ignore-user-config` (except `--full`),
 and passes `--effort`; resume warns that Codex does not support `--add-dir`.
 
@@ -94,7 +99,7 @@ The orchestrator drops a job file, spends no tokens watching, and gets
 | worker says file "absent" on resume | forgot `--cd`; it resumed in the orchestrator's cwd. |
 | `failed to load skill ...` on stderr | harmless; a broken skill in `$CODEX_HOME/skills`. |
 | ~30 s + 90k input tokens before first edit | `--full` loaded user's skills. Clean-room default avoids it. |
-| unknown model | slugs from `~/.codex/models_cache.json`. |
+| `tier/model '…' not allowed for codex` | Only `sol-low`/`sol`/`sol-high`/`astra` (or raw `gpt-6.1-sol`/`gpt-6-astra`). Pick a tier. |
 | Codex cannot `git commit` | The sandbox mounts `.git` read-only. The orchestrator commits; brief the worker "do not commit". |
 | Stream ends with `turn.failed`, exit 1 | Codex hit the 5-hour usage limit mid-run. The exit message includes the reset time. Resume the same thread after the reset window. |
 | Need to continue on a *different* vendor (quota/reset too far out) | Don't hand-roll a new brief — `agent-delegates handoff <job-dir> <vendor> [tier] --cd DIR` builds a continuation brief from the failed job's brief/meta/last.md/events/git-state and fires it at the new vendor. |

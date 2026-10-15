@@ -80,7 +80,7 @@ test('buildJob injects a CRITICAL WORK note into the run-mode prompt only when g
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-critical-'));
   const out = path.join(dir, 'out');
   fs.mkdirSync(out);
-  const { job } = buildJob('claude', 'claude', 'run', 'claude-sonnet-5', '', 'do the thing', out, { cd: dir }, { critical: true, reasons: ['heuristic: keyword "deploy" in brief'] });
+  const { job } = buildJob('claude', 'claude', 'run', 'claude-sonnet-5-5', '', 'do the thing', out, { cd: dir }, { critical: true, reasons: ['heuristic: keyword "deploy" in brief'] });
   const prompt = fs.readFileSync(path.join(out, 'prompt.md'), 'utf8');
   assert.match(prompt, /CRITICAL WORK: this brief touches production\/critical systems/);
   assert.match(prompt, /heuristic: keyword "deploy" in brief/);
@@ -88,7 +88,7 @@ test('buildJob injects a CRITICAL WORK note into the run-mode prompt only when g
 
   const outNonCritical = path.join(dir, 'out2');
   fs.mkdirSync(outNonCritical);
-  const nonCritical = buildJob('claude', 'claude', 'run', 'claude-sonnet-5', '', 'do the thing', outNonCritical, { cd: dir }).job;
+  const nonCritical = buildJob('claude', 'claude', 'run', 'claude-sonnet-5-5', '', 'do the thing', outNonCritical, { cd: dir }).job;
   const promptNonCritical = fs.readFileSync(path.join(outNonCritical, 'prompt.md'), 'utf8');
   assert.doesNotMatch(promptNonCritical, /CRITICAL WORK:/);
 
@@ -121,8 +121,8 @@ test('invoke() refuses critical work on a small/standard model before submitting
   for (const key of Object.keys(env)) { saved[key] = process.env[key]; process.env[key] = env[key]; }
   try {
     await assert.rejects(
-      () => invoke('run', 'codex', 'terra', briefFile, { cd: cwd, critical: true, noPreflight: true, guardConfig: { keywords: [], paths: [] } }),
-      /CRITICAL WORK.*codex terra is a standard model; critical work requires a large model/
+      () => invoke('run', 'codex', 'sol', briefFile, { cd: cwd, critical: true, noPreflight: true, guardConfig: { keywords: [], paths: [] } }),
+      /CRITICAL WORK.*codex sol is a standard model; critical work requires a large model/
     );
     assert.equal(fs.existsSync(outRoot), false, 'no output dir should be created when the guard refuses before the job runs');
   } finally {
@@ -164,7 +164,7 @@ test('invoke() allows critical work on a large model and prints CRITICAL/PERMISS
   try {
     // critical: true is the hard (--critical-equivalent) path — a keyword hit alone must never
     // be treated as critical (it's advisory-only; see the CRITICAL? tests in guard.test.js).
-    await invoke('run', 'codex', 'sol', briefFile, { cd: cwd, critical: true, noPreflight: true, guardConfig: { keywords: [], paths: [] } });
+    await invoke('run', 'codex', 'sol-high', briefFile, { cd: cwd, critical: true, noPreflight: true, guardConfig: { keywords: [], paths: [] } });
     assert.ok(logs.some(l => l.startsWith('CRITICAL: --critical flag set')), JSON.stringify(logs));
     assert.ok(logs.some(l => /^PERMISSIONS: sandbox workspace-write \(no bypass\)$/.test(l)), JSON.stringify(logs));
   } finally {
@@ -201,9 +201,9 @@ test('invoke() prints CRITICAL? (never CRITICAL:) and does not refuse a small mo
   const originalLog = console.log;
   console.log = (...args) => logs.push(args.join(' '));
   try {
-    // codex 'luna' (small) — this must NOT be refused, since "deploy" here is only a suspected
+    // codex 'sol-low' (small) — this must NOT be refused, since "deploy" here is only a suspected
     // (heuristic) hit, never hard critical.
-    await invoke('run', 'codex', 'luna', briefFile, { cd: cwd, noPreflight: true, guardConfig: { keywords: ['deploy'], paths: [] } });
+    await invoke('run', 'codex', 'sol-low', briefFile, { cd: cwd, noPreflight: true, guardConfig: { keywords: ['deploy'], paths: [] } });
     assert.ok(
       logs.some(l => l === 'CRITICAL? heuristic: keyword "deploy" in brief — pass --critical if this touches live systems'),
       JSON.stringify(logs)
@@ -355,7 +355,7 @@ test('invoke() refuses via injected preflight before any console/job work, and s
   try {
     const refusing = async () => ({ ok: false, reason: 'codex: not logged in — run \'codex login\' first (skip with --no-preflight)' });
     await assert.rejects(
-      () => invoke('run', 'codex', 'terra', briefFile, { cd: cwd, preflight: refusing }),
+      () => invoke('run', 'codex', 'sol', briefFile, { cd: cwd, preflight: refusing }),
       /not logged in/
     );
     assert.equal(fs.existsSync(outRoot), false, 'no output dir should be created when preflight refuses');
@@ -371,7 +371,7 @@ test('invoke() refuses via injected preflight before any console/job work, and s
     assert.doesNotMatch(resumeResult.reason || '', /should not matter/);
 
     calls = 0;
-    const noPreflightResult = await invoke('run', 'codex', 'terra', briefFile, { cd: cwd, noPreflight: true, preflight: countingRefusal });
+    const noPreflightResult = await invoke('run', 'codex', 'sol', briefFile, { cd: cwd, noPreflight: true, preflight: countingRefusal });
     assert.equal(calls, 0, 'preflight must not run with options.noPreflight');
     assert.doesNotMatch(noPreflightResult.reason || '', /should not matter/);
   } finally {
@@ -679,7 +679,7 @@ test('m5: codex resume warns and drops --add-dir (codex exec resume has no such 
   const errors = [];
   console.error = (...args) => errors.push(args.join(' '));
   try {
-    const { job } = buildJob('codex', 'codex', 'resume', 'gpt-5.6-luna', 'thread-1', 'follow-up', out, { cd: dir, addDir: [extra], effort: 'high' });
+    const { job } = buildJob('codex', 'codex', 'resume', 'gpt-6.1-sol', 'thread-1', 'follow-up', out, { cd: dir, addDir: [extra], effort: 'high' });
     assert.ok(!job.args.includes('--add-dir'), JSON.stringify(job.args));
     assert.ok(errors.some(e => /--add-dir ignored for codex resume/.test(e)), JSON.stringify(errors));
     assert.ok(job.args.includes('model_reasoning_effort=high'), JSON.stringify(job.args));
@@ -744,11 +744,11 @@ test('preflight(agy): runner failure or garbage -> unknown', async () => {
 // no model at all, so Codex (and every other vendor) silently fell back to its own default
 // instead of the model the session was recorded with. resolveResumeModel() is the single shared
 // place that now decides, and buildJob()/invoke() must actually use what it returns.
-function writePriorJob(outRoot, dirName, { vendor, idField, id, model, startedAt }) {
+function writePriorJob(outRoot, dirName, { vendor, idField, id, model, startedAt, tier, effort }) {
   const dir = path.join(outRoot, dirName);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, idField), `${id}\n`);
-  fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ vendor, model, startedAt }));
+  fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ vendor, model, startedAt, tier, effort }));
 }
 
 test('resolveResumeModel: picks the newest prior job\'s recorded model for the same vendor+id', () => {
@@ -756,10 +756,10 @@ test('resolveResumeModel: picks the newest prior job\'s recorded model for the s
   const saved = process.env.DELEGATE_OUT;
   process.env.DELEGATE_OUT = outRoot;
   try {
-    writePriorJob(outRoot, 'luna-20260101-000000-000', { vendor: 'codex', idField: 'thread_id', id: 'thread-1', model: 'gpt-5.6-luna', startedAt: '2026-01-01T00:00:00.000Z' });
+    writePriorJob(outRoot, 'luna-20260101-000000-000', { vendor: 'codex', idField: 'thread_id', id: 'thread-1', model: 'gpt-6.1-sol', startedAt: '2026-01-01T00:00:00.000Z' });
     writePriorJob(outRoot, 'luna-20260102-000000-000', { vendor: 'codex', idField: 'thread_id', id: 'thread-1', model: 'gpt-6-astra', startedAt: '2026-01-02T00:00:00.000Z' });
     // A different vendor/id sharing the same session_id-style file name must never match.
-    writePriorJob(outRoot, 'other-20260103-000000-000', { vendor: 'claude', idField: 'session_id', id: 'thread-1', model: 'claude-opus-5', startedAt: '2026-01-03T00:00:00.000Z' });
+    writePriorJob(outRoot, 'other-20260103-000000-000', { vendor: 'claude', idField: 'session_id', id: 'thread-1', model: 'claude-opus-5-5', startedAt: '2026-01-03T00:00:00.000Z' });
 
     const resolved = resolveResumeModel('codex', 'thread-1', {});
     assert.equal(resolved.model, 'gpt-6-astra', 'must pick the newest matching prior job, not just the first found');
@@ -778,21 +778,68 @@ test('resolveResumeModel: explicit --tier wins over any recorded prior model', (
     const resolved = resolveResumeModel('codex', 'thread-1', { tier: 'sol' });
     assert.equal(resolved.model, 'gpt-6.1-sol');
 
-    const resolvedModelFlag = resolveResumeModel('codex', 'thread-1', { model: 'gpt-custom-slug' });
-    assert.equal(resolvedModelFlag.model, 'gpt-custom-slug');
+    const resolvedModelFlag = resolveResumeModel('codex', 'thread-1', { model: 'gpt-6-astra' });
+    assert.equal(resolvedModelFlag.model, 'gpt-6-astra');
+    assert.equal(resolvedModelFlag.why, 'explicit');
+    // explicit --tier/--model outside the allowlist is rejected, never passed through
+    assert.throws(() => resolveResumeModel('codex', 'thread-1', { model: 'gpt-custom-slug' }), /not allowed for codex/);
+    assert.throws(() => resolveResumeModel('codex', 'thread-1', { tier: 'luna' }), /not allowed for codex/);
+    assert.throws(() => resolveResumeModel('claude', 'thread-1', { model: 'claude-opus-5' }), /not allowed for claude/);
+    // non-strict vendors keep raw passthrough
+    assert.equal(resolveResumeModel('agy', 'conv-1', { model: 'gemini-whatever' }).model, 'gemini-whatever');
   } finally {
     if (saved == null) delete process.env.DELEGATE_OUT; else process.env.DELEGATE_OUT = saved;
   }
 });
 
-test('resolveResumeModel: no recorded model and no override -> empty model plus a one-line warning', () => {
+test('resolveResumeModel: recorded model no longer allowed -> remapped to the policy default (codex sol, claude sonnet-5-5)', () => {
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-resume-model-remap-'));
+  const saved = process.env.DELEGATE_OUT;
+  process.env.DELEGATE_OUT = outRoot;
+  try {
+    writePriorJob(outRoot, 'c-1', { vendor: 'codex', idField: 'thread_id', id: 'thread-1', model: 'gpt-5.6-luna', startedAt: '2026-01-01T00:00:00.000Z' });
+    writePriorJob(outRoot, 'c-2', { vendor: 'claude', idField: 'session_id', id: 'sess-1', model: 'claude-opus-5', startedAt: '2026-01-01T00:00:00.000Z' });
+    writePriorJob(outRoot, 'c-3', { vendor: 'claude', idField: 'session_id', id: 'sess-2', model: 'claude-haiku-4-5-20251001', startedAt: '2026-01-01T00:00:00.000Z' });
+    const codex = resolveResumeModel('codex', 'thread-1', {});
+    assert.equal(codex.model, 'gpt-6.1-sol');
+    assert.equal(codex.tier, 'sol');
+    assert.equal(codex.effort, 'medium');
+    assert.equal(codex.why, 'resume-remap');
+    assert.equal(codex.from, 'gpt-5.6-luna');
+    const claude = resolveResumeModel('claude', 'sess-1', {});
+    assert.equal(claude.model, 'claude-sonnet-5-5');
+    assert.equal(claude.why, 'resume-remap');
+    assert.equal(resolveResumeModel('claude', 'sess-2', {}).model, 'claude-sonnet-5-5');
+  } finally {
+    if (saved == null) delete process.env.DELEGATE_OUT; else process.env.DELEGATE_OUT = saved;
+  }
+});
+
+test('resolveResumeModel: a recorded allowed model keeps its recorded tier and effort (sol-high stays high)', () => {
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-resume-model-effort-'));
+  const saved = process.env.DELEGATE_OUT;
+  process.env.DELEGATE_OUT = outRoot;
+  try {
+    writePriorJob(outRoot, 'c-1', { vendor: 'codex', idField: 'thread_id', id: 'thread-1', model: 'gpt-6.1-sol', tier: 'sol-high', effort: 'high', startedAt: '2026-01-01T00:00:00.000Z' });
+    const resolved = resolveResumeModel('codex', 'thread-1', {});
+    assert.deepEqual({ m: resolved.model, t: resolved.tier, e: resolved.effort, w: resolved.why }, { m: 'gpt-6.1-sol', t: 'sol-high', e: 'high', w: 'resume' });
+  } finally {
+    if (saved == null) delete process.env.DELEGATE_OUT; else process.env.DELEGATE_OUT = saved;
+  }
+});
+
+test('resolveResumeModel: no recorded model and no override -> policy default (codex/claude) or empty (other vendors) plus a one-line warning', () => {
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-resume-model-missing-'));
   const saved = process.env.DELEGATE_OUT;
   process.env.DELEGATE_OUT = outRoot;
   try {
     const resolved = resolveResumeModel('codex', 'thread-unknown', {});
-    assert.equal(resolved.model, '');
-    assert.match(resolved.warning, /resume: no recorded model for codex thread-unknown; vendor default will be used/);
+    assert.equal(resolved.model, 'gpt-6.1-sol', 'codex must never fall back to its own (astra) default');
+    assert.match(resolved.warning, /resume: no recorded model for codex thread-unknown; using policy default gpt-6\.1-sol/);
+    assert.equal(resolveResumeModel('claude', 'sess-unknown', {}).model, 'claude-sonnet-5-5');
+    const other = resolveResumeModel('agy', 'conv-unknown', {});
+    assert.equal(other.model, '');
+    assert.match(other.warning, /resume: no recorded model for agy conv-unknown; vendor default will be used/);
   } finally {
     if (saved == null) delete process.env.DELEGATE_OUT; else process.env.DELEGATE_OUT = saved;
   }
@@ -802,8 +849,8 @@ test('buildJob: codex resume pins the resolved model via `-c model=...` (no -m/-
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-codex-resume-model-'));
   const out = path.join(dir, 'out');
   fs.mkdirSync(out);
-  const { job } = buildJob('codex', 'codex', 'resume', 'gpt-5.6-luna', 'thread-1', 'follow-up', out, { cd: dir });
-  assert.ok(job.args.includes('model=gpt-5.6-luna'), JSON.stringify(job.args));
+  const { job } = buildJob('codex', 'codex', 'resume', 'gpt-6.1-sol', 'thread-1', 'follow-up', out, { cd: dir });
+  assert.ok(job.args.includes('model=gpt-6.1-sol'), JSON.stringify(job.args));
   assert.ok(!job.args.includes('-m'), 'codex exec resume has no -m flag; it must go through -c');
 
   const { job: noModelJob } = buildJob('codex', 'codex', 'resume', '', 'thread-1', 'follow-up', out, { cd: dir });
@@ -837,7 +884,7 @@ test('invoke(): codex resume reads the prior run\'s recorded model and pins it, 
   fs.mkdirSync(scratchHome, { recursive: true });
   const outRoot = path.join(dir, 'out');
   const argsFile = path.join(dir, 'args.txt');
-  // Simulate a prior `run` that recorded model gpt-5.6-luna for thread-1.
+  // Simulate a prior `run` that recorded a no-longer-allowed model (gpt-5.6-luna) for thread-1.
   writePriorJob(outRoot, 'codex-20260101-000000-000', { vendor: 'codex', idField: 'thread_id', id: 'thread-1', model: 'gpt-5.6-luna', startedAt: '2026-01-01T00:00:00.000Z' });
 
   const env = {
@@ -851,19 +898,28 @@ test('invoke(): codex resume reads the prior run\'s recorded model and pins it, 
   const saved = {};
   for (const key of Object.keys(env)) { saved[key] = process.env[key]; process.env[key] = env[key]; }
   const originalError = console.error;
+  const originalLog = console.log;
   const errors = [];
+  const logs = [];
   console.error = (...args) => errors.push(args.join(' '));
+  console.log = (...args) => logs.push(args.join(' '));
   try {
     const result = await invoke('resume', 'codex', 'thread-1', briefFile, { cd: cwd });
     const invokedArgs = fs.readFileSync(argsFile, 'utf8');
-    assert.match(invokedArgs, /model=gpt-5\.6-luna/, invokedArgs);
+    assert.match(invokedArgs, /model=gpt-6\.1-sol/, invokedArgs);
+    assert.doesNotMatch(invokedArgs, /luna/, invokedArgs);
+    assert.match(invokedArgs, /model_reasoning_effort=medium/, invokedArgs);
+    assert.ok(logs.some(l => /^SELECT: vendor=codex tier=sol model=gpt-6\.1-sol effort=medium why=resume-remap \(recorded gpt-5\.6-luna is no longer allowed\)$/.test(l)), JSON.stringify(logs));
     assert.ok(!errors.some(e => /no recorded model/.test(e)), 'must not warn when a prior model was found');
 
     const meta = JSON.parse(fs.readFileSync(path.join(result.outDir, 'meta.json'), 'utf8'));
-    assert.equal(meta.model, 'gpt-5.6-luna', 'resumed job must record the resolved model so a chained resume keeps it');
+    assert.equal(meta.model, 'gpt-6.1-sol', 'resumed job must record the remapped model so a chained resume keeps it');
+    assert.equal(meta.tier, 'sol');
+    assert.equal(meta.effort, 'medium');
     assert.notEqual(meta.tierClass, 'unknown', 'guard tierClass must resolve the model, not fall back to unknown');
   } finally {
     console.error = originalError;
+    console.log = originalLog;
     for (const key of Object.keys(env)) {
       if (saved[key] == null) delete process.env[key]; else process.env[key] = saved[key];
     }
@@ -915,3 +971,68 @@ test('m9: invoke() prints the "no recorded model" resume warning via console.log
     }
   }
 });
+
+// --- model policy (2026-10): codex = gpt-6.1-sol with effort per tier; claude = sonnet/opus 5.5 ---
+function withFakeCodex(fn) {
+  return async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-policy-'));
+    const bin = path.join(dir, 'bin');
+    fs.mkdirSync(bin);
+    const fakeCodex = path.join(bin, 'codex');
+    fs.writeFileSync(fakeCodex, '#!/bin/bash\necho "$@" > "$DELEGATE_TEST_ARGS_FILE"\necho \'{"type":"turn.completed","thread_id":"thread-9","usage":{}}\'\nexit 0\n');
+    fs.chmodSync(fakeCodex, 0o755);
+    const cwd = path.join(dir, 'cwd');
+    fs.mkdirSync(cwd);
+    const briefFile = path.join(dir, 'brief.md');
+    fs.writeFileSync(briefFile, 'reply OK\n');
+    const scratchHome = path.join(dir, 'home');
+    fs.mkdirSync(scratchHome, { recursive: true });
+    const outRoot = path.join(dir, 'out');
+    const argsFile = path.join(dir, 'args.txt');
+    const env = {
+      HOME: scratchHome, PATH: `${bin}${path.delimiter}${process.env.PATH}`, DELEGATE_NO_WINDOW: '1',
+      DELEGATE_CONSOLE_DIR: path.join(dir, 'consoles'), DELEGATE_OUT: outRoot, DELEGATE_TEST_ARGS_FILE: argsFile
+    };
+    const saved = {};
+    for (const key of Object.keys(env)) { saved[key] = process.env[key]; process.env[key] = env[key]; }
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...args) => logs.push(args.join(' '));
+    try {
+      await fn({ cwd, briefFile, outRoot, argsFile, logs });
+    } finally {
+      console.log = originalLog;
+      for (const key of Object.keys(env)) {
+        if (saved[key] == null) delete process.env[key]; else process.env[key] = saved[key];
+      }
+    }
+  };
+}
+
+test('invoke(): removed tiers and non-allowlisted raw models are rejected for codex/claude before any output dir exists', withFakeCodex(async ({ cwd, briefFile, outRoot }) => {
+  const opts = { cd: cwd, noPreflight: true, guardConfig: { keywords: [], paths: [] } };
+  await assert.rejects(() => invoke('run', 'codex', 'luna', briefFile, opts), /'luna' not allowed for codex: allowed tiers sol-low\|sol\|sol-high\|astra/);
+  await assert.rejects(() => invoke('run', 'codex', 'terra', briefFile, opts), /not allowed for codex/);
+  await assert.rejects(() => invoke('run', 'codex', 'gpt-5.6-terra', briefFile, opts), /not allowed for codex/);
+  await assert.rejects(() => invoke('run', 'codex', 'gpt-custom', briefFile, opts), /not allowed for codex/);
+  await assert.rejects(() => invoke('run', 'claude', 'haiku', briefFile, opts), /'haiku' not allowed for claude: allowed tiers sonnet\|opus/);
+  await assert.rejects(() => invoke('run', 'claude', 'claude-opus-5', briefFile, opts), /not allowed for claude/);
+  await assert.rejects(() => invoke('run', 'claude', 'claude-haiku-4-5-20251001', briefFile, opts), /not allowed for claude/);
+  assert.equal(fs.existsSync(outRoot), false, 'no output dir for a rejected selection');
+}));
+
+test('invoke(): codex effort follows the tier (low/medium/high), explicit --effort overrides, SELECT line logged', withFakeCodex(async ({ cwd, briefFile, argsFile, logs }) => {
+  const opts = { cd: cwd, noPreflight: true, guardConfig: { keywords: [], paths: [] } };
+  const cases = [['sol-low', 'low', 'gpt-6.1-sol'], ['sol', 'medium', 'gpt-6.1-sol'], ['sol-high', 'high', 'gpt-6.1-sol'], ['astra', 'high', 'gpt-6-astra']];
+  for (const [tier, effort, model] of cases) {
+    logs.length = 0;
+    await invoke('run', 'codex', tier, briefFile, opts);
+    const args = fs.readFileSync(argsFile, 'utf8');
+    assert.match(args, new RegExp(`-m ${model} `), args);
+    assert.match(args, new RegExp(`model_reasoning_effort=${effort}\\b`), args);
+    assert.ok(logs.some(l => l === `SELECT: vendor=codex tier=${tier} model=${model} effort=${effort} why=explicit`), JSON.stringify(logs.filter(l => /SELECT/.test(l))));
+  }
+  await invoke('run', 'codex', 'sol', briefFile, { ...opts, effort: 'high', why: 'auto-default' });
+  assert.match(fs.readFileSync(argsFile, 'utf8'), /model_reasoning_effort=high\b/);
+  assert.ok(logs.some(l => l === 'SELECT: vendor=codex tier=sol model=gpt-6.1-sol effort=high why=auto-default'));
+}));

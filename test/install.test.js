@@ -180,7 +180,7 @@ test('install --delegates: preserves other existing keys already in routing.json
   assert.deepEqual(routing.priority, ['grok', 'claude']);
 });
 
-test('install: non-interactive (no flags, no TTY) uses defaults (main claude, delegates agy/codex/grok) and never writes priority', async () => {
+test('install: non-interactive (no flags, no TTY) uses defaults (main claude, delegates codex/opencode) and never writes priority', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
   const log = [];
   let offeredIds = null;
@@ -189,7 +189,7 @@ test('install: non-interactive (no flags, no TTY) uses defaults (main claude, de
     setupVendorClis: async options => { offeredIds = options.vendorIds; },
     log: line => log.push(line)
   });
-  assert.deepEqual(offeredIds, ['agy', 'codex', 'grok']);
+  assert.deepEqual(offeredIds, ['codex', 'opencode']);
   for (const skill of SKILLS) assert.equal(fs.lstatSync(path.join(fakeHome, '.claude', 'skills', skill)).isSymbolicLink(), true);
   // routing.json now legitimately gets created by bins resolution (lib/bins.js always resolves
   // *something* for agy/codex/grok) — what must NOT happen on the silent default path is a

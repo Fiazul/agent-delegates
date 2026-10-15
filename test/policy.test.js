@@ -195,7 +195,7 @@ test('routeCheck: a fresh rows.json cache is used and probeRows is never called 
     const probeRows = async () => { calls++; return []; };
     const resetsAt = NOW + 6 * 86400;
     const result = await routeCheck({
-      home: dir, config: DEFAULTS, now: NOW, snapshot: snapshot({ wk: 30, resetsAt }), probeRows
+      home: dir, config: { ...DEFAULTS, priority: ['agy', 'claude'] }, now: NOW, snapshot: snapshot({ wk: 30, resetsAt }), probeRows
     });
     assert.equal(calls, 0, 'probeRows must not be called when the cache is fresh');
     assert.equal(result.nextVendor, 'agy', 'the cached rows (not an empty probe result) must have been used');
@@ -296,15 +296,40 @@ test('pick: route unknown when snapshot missing', async () => {
 
 test('pick: route external picks vendor+tier via DEFAULT_TIER', async () => {
   const resetsAt = NOW + 6 * 86400;
-  const rows = [['agy', 'gemini wk 45% · claude/gpt wk 10%', '?']];
+  const rows = [['codex', 'wk 40% (reset 3h) · 5h 20%', '?']];
   const result = await pick({
     now: NOW, config: DEFAULTS, snapshot: snapshot({ wk: 30, resetsAt }), rows
   });
   assert.equal(result.route, 'external');
-  assert.equal(result.vendor, 'agy');
-  assert.equal(result.tier, 'flash');
+  assert.equal(result.vendor, 'codex');
+  assert.equal(result.tier, 'sol');
   assert.equal(result.critical, false);
-  assert.match(result.command, /agent-delegates run agy flash BRIEF\.md --cd <dir>$/);
+  assert.match(result.command, /agent-delegates run codex sol BRIEF\.md --cd <dir>$/);
+});
+
+test('default routing priority is codex -> opencode -> claude; pick never suggests agy/grok/cursor by default', async () => {
+  assert.deepEqual(DEFAULTS.priority, ['codex', 'opencode', 'claude']);
+  const resetsAt = NOW + 6 * 86400;
+  // Every vendor has quota; with defaults pick must still land on codex, never agy/grok/cursor.
+  const rows = [
+    ['agy', 'gemini wk 45% · claude/gpt wk 10%', '?'],
+    ['grok', 'logged in · quota via --probe-grok', '?'],
+    ['cursor', 'logged in · no quota API', '?'],
+    ['opencode', 'logged in · no quota API', '?'],
+    ['codex', 'wk 40% (reset 3h) · 5h 20%', '?']
+  ];
+  const result = await pick({ now: NOW, config: DEFAULTS, snapshot: snapshot({ wk: 30, resetsAt }), rows });
+  assert.equal(result.vendor, 'codex');
+  // codex exhausted -> opencode (next in default order), not agy
+  rows[4] = ['codex', 'wk 40% (reset 3h) · 5h 20%  EXHAUSTED', '?'];
+  const next = await pick({ now: NOW, config: DEFAULTS, snapshot: snapshot({ wk: 30, resetsAt }), rows });
+  assert.equal(next.vendor, 'opencode');
+  assert.equal(next.tier, 'free');
+  // critical: codex critical tier is sol-high (never astra)
+  rows[4] = ['codex', 'wk 40% (reset 3h) · 5h 20%', '?'];
+  const crit = await pick({ now: NOW, config: DEFAULTS, snapshot: snapshot({ wk: 30, resetsAt }), rows, critical: true });
+  assert.equal(crit.vendor, 'codex');
+  assert.equal(crit.tier, 'sol-high');
 });
 
 test('pick: critical work uses CRITICAL_TIER and skips vendors with no large tier', async () => {

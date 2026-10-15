@@ -1,6 +1,6 @@
 ---
 name: delegate-claude
-description: Use when a main agent needs to delegate work to a Claude Code worker — user says "use claude", "claude worker", "delegate to claude", or wants Claude's strengths on a subtask. Supports haiku/sonnet/opus tiers. Default permission is acceptEdits; --yolo bypasses permissions.
+description: Use when a main agent needs to delegate work to a Claude Code worker — user says "use claude", "claude worker", "delegate to claude", or wants Claude's strengths on a subtask. Supports sonnet/opus tiers (Sonnet 5.5, Opus 5.5). Default permission is acceptEdits; --yolo bypasses permissions.
 ---
 
 # Delegate to Claude Code
@@ -15,11 +15,18 @@ Critical work (`--critical`): only `opus` allowed.
 
 | Tier | Claude model | Use for |
 |------|--------------|---------|
-| `haiku` | claude-haiku-4-5-20251001 | small / trivial tasks |
-| `sonnet` | claude-sonnet-5 | **default** implementation |
-| `opus` | claude-opus-5 | hard tasks, multi-step reasoning |
+| `sonnet` | claude-sonnet-5-5 | **default** simple / standard implementation |
+| `opus` | claude-opus-5-5 | reviews, big / hard work, multi-step reasoning (and backend logic) |
 
-`--effort E` selects reasoning effort. Raw model slugs also accepted.
+`--effort E` selects reasoning effort. Nothing else is selectable: `haiku`, the old
+`claude-sonnet-5`/`claude-opus-5` slugs, and any other raw slug are rejected with an error listing
+the allowed tiers (only `claude-sonnet-5-5`/`claude-opus-5-5` pass as raw slugs). Each run logs
+`SELECT: vendor=claude tier=… model=… effort=… why=…`.
+
+### Strengths — route by domain
+
+- **Backend logic** (services, data pipelines, business logic, integrations, server-code debugging): Claude `opus` beats Codex `sol` → prefer Claude.
+- **2D/3D/visual design** (UI layout, canvas/SVG, three.js/WebGL, game graphics): Codex beats Claude → prefer `delegate-codex`.
 
 ## Commands
 
@@ -36,8 +43,9 @@ agent-delegates close claude
 ```
 
 Brief filename `-` reads stdin. `--add-dir D` adds directories.
-Resume reuses the recorded model; `--tier` wins over `--model`, and no record
-prints a warning before using the vendor default. Those flags are invalid on `run`.
+Resume reuses the recorded model; `--tier` wins over `--model` (both allowlist-checked); a
+recorded model that is no longer allowed is remapped to `claude-sonnet-5-5` with a logged line, and
+no record pins `claude-sonnet-5-5` with a warning. Those flags are invalid on `run`.
 
 ## Writing the brief
 

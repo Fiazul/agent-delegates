@@ -40,13 +40,13 @@ Each job output: `<DELEGATE_OUT>/<name>-<ts>/` with `brief.md`, `prompt.md`,
 npm test                                    # unit tests, must stay green
 node bin/cli.js --help                      # show all commands and flags
 node bin/cli.js status                      # quota table, always probes vendors and refreshes the rows cache
-node bin/cli.js run codex terra BRIEF.md --cd /path/to/repo
+node bin/cli.js run codex sol BRIEF.md --cd /path/to/repo
 node bin/cli.js run agy flash BRIEF.md --cd /path/to/repo
-DELEGATE_NO_WINDOW=1 node bin/cli.js run codex luna BRIEF.md --cd /path/to/repo  # inline, no window
+DELEGATE_NO_WINDOW=1 node bin/cli.js run codex sol-low BRIEF.md --cd /path/to/repo  # inline, no window
 node bin/cli.js route-check --json                       # routing decision; reads cached rows.json (<10min old) or probes and refreshes it; --probe forces a probe
 node bin/cli.js pick --json                               # route-check + the actual vendor/tier/command to run
 node bin/cli.js run auto BRIEF.md --cd /path/to/repo       # policy-aware, picks a vendor and hands off on exhaustion
-node bin/cli.js handoff /path/to/out-dir codex terra --cd /path/to/repo   # continuation brief to another vendor
+node bin/cli.js handoff /path/to/out-dir codex sol --cd /path/to/repo   # continuation brief to another vendor
 ```
 
 ## Decisions that must not be undone
@@ -59,6 +59,7 @@ node bin/cli.js handoff /path/to/out-dir codex terra --cd /path/to/repo   # cont
 - **Zero runtime npm dependencies** — no lodash, no chalk, no nothing.
 - **Commits use the personal identity** already set in `.git/config` — never change it.
 - **Never push without the user's OK.**
+- **Model policy is an allowlist** (`lib/models.js`, `STRICT_VENDORS`): codex = `gpt-6.1-sol` only (tiers `sol-low`/`sol`/`sol-high` = effort low/medium/high; `gpt-6-astra` via explicit `astra` tier, critical 2D/3D/visual design work only); claude = `claude-sonnet-5-5` / `claude-opus-5-5`. Removed tiers and raw slugs outside the list throw; resume remaps stale recorded models to the policy default. No passthrough prefixes for codex/claude. Change the policy only by editing the maps in `lib/models.js` (+ docs/tests).
 
 ## Gotchas
 
@@ -73,7 +74,8 @@ node bin/cli.js handoff /path/to/out-dir codex terra --cd /path/to/repo   # cont
   stderr. Judge success from `last.md`/`turn.completed` (the failure classifier does), not the raw code.
 - `codex exec resume` has no `-m`/`--model` flag — pin the model via `-c model=<slug>`, otherwise
   Codex silently resumes on its own default (astra, the most expensive tier) instead of the model
-  the thread was recorded with. Fixed 2026-09-18 (`lib/runner.js`'s `resolveResumeModel`, applied
+  the thread was recorded with (and, since 2026-10, a missing/removed recorded model pins the policy
+  default gpt-6.1-sol, never Codex's own default). Fixed 2026-09-18 (`lib/runner.js`'s `resolveResumeModel`, applied
   to every vendor's resume branch, not just codex's).
 
 ### Antigravity

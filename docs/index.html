@@ -273,10 +273,10 @@
           <tr><th>Vendor</th><th>CLI</th><th>Tiers</th><th>Critical-work tier</th></tr>
         </thead>
         <tbody>
-          <tr><td>codex</td><td>codex</td><td>luna, terra, sol, astra</td><td>sol (or astra)</td></tr>
+          <tr><td>codex</td><td>codex</td><td>sol-low, sol, sol-high, astra</td><td>sol-high (or astra, explicit only)</td></tr>
           <tr><td>agy</td><td>agy</td><td>lite, flash, pro, sonnet, opus</td><td>opus</td></tr>
           <tr><td>grok</td><td>grok</td><td>fast, best</td><td>best</td></tr>
-          <tr><td>claude</td><td>claude</td><td>haiku, sonnet, opus</td><td>opus</td></tr>
+          <tr><td>claude</td><td>claude</td><td>sonnet, opus</td><td>opus</td></tr>
           <tr><td>cursor</td><td>cursor-agent</td><td>auto, composer</td><td>none — refused unless --allow-small</td></tr>
           <tr><td>opencode</td><td>opencode</td><td>free, go</td><td>none — refused unless --allow-small</td></tr>
         </tbody>
@@ -288,10 +288,10 @@
     <h2>Quick commands</h2>
     <pre><code>agent-delegates status
 agent-delegates pick --json
-agent-delegates run codex luna BRIEF.md --cd "/path/to/repo"
+agent-delegates run codex sol BRIEF.md --cd "/path/to/repo"
 agent-delegates run auto BRIEF.md --cd "/path/to/repo"
 agent-delegates resume codex THREAD_ID FOLLOWUP.md --cd "/path/to/repo"
-agent-delegates handoff /path/to/out-dir codex terra --cd "/path/to/repo"
+agent-delegates handoff /path/to/out-dir codex sol --cd "/path/to/repo"
 agent-delegates route-check --json</code></pre>
   </section>
 

@@ -56,7 +56,7 @@ logged in). Answering Q2 (or passing
 the default — the *default* itself is silent about `priority` (a fully
 non-interactive `install` with no `--delegates` never touches an existing
 `priority` you've set by hand). Non-interactively, the default is
-`agy,codex,grok`. Override with `--delegates v1,v2,...` (comma-separated:
+`codex,opencode`. Override with `--delegates v1,v2,...` (comma-separated:
 `agy`, `codex`, `grok`, `claude`, `cursor`, `opencode`).
 
 Either way, `install` also checks for the selected vendor CLIs. In an
@@ -258,7 +258,7 @@ place.
 ```sh
 agent-delegates status                                       # quota table
 agent-delegates status --probe-grok                          # refresh Grok (tiny paid call)
-agent-delegates run codex luna BRIEF.md --cd "/path/to/repo"
+agent-delegates run codex sol BRIEF.md --cd "/path/to/repo"
 agent-delegates resume codex THREAD_ID FOLLOWUP.md --cd "/path/to/repo" [--tier T | --model M]
 agent-delegates interrupt codex
 agent-delegates close codex
@@ -280,14 +280,38 @@ Writing a brief: start from
 A brief without Goal, Scope out, and Acceptance criteria produces a worker
 that guesses.
 
+### Model policy
+
+Only these models can be selected for Codex and Claude (anything else is rejected with an
+error naming the allowed tiers; raw `--model`/positional slugs outside the list are rejected too,
+on `run`, `resume`, `handoff`, and `run auto`):
+
+| Vendor | Tier | Model | Effort | Use for |
+|--------|------|-------|--------|---------|
+| codex | `sol-low` | gpt-6.1-sol | low | simple |
+| codex | `sol` (default) | gpt-6.1-sol | medium | standard |
+| codex | `sol-high` | gpt-6.1-sol | high | hard; also the critical-work tier |
+| codex | `astra` | gpt-6-astra | high | **critical 2D/3D/visual design work only** |
+| claude | `sonnet` (default) | claude-sonnet-5-5 | — | simple / standard |
+| claude | `opus` | claude-opus-5-5 | — | reviews, big / hard work (also the critical-work tier) |
+
+Codex is one model (`gpt-6.1-sol`); effort is the knob (`--effort` overrides the tier's).
+Every run logs one line, e.g. `SELECT: vendor=codex tier=sol model=gpt-6.1-sol effort=medium
+why=explicit` (`why` = `explicit`, `auto-default`, `handoff-default`, `default`, `resume`, or
+`resume-remap`). On `resume`, a recorded model that is no longer allowed (e.g. `gpt-5.6-luna`,
+`claude-opus-5`) is remapped to the policy default (codex `gpt-6.1-sol`, claude
+`claude-sonnet-5-5`) and the `SELECT` line says so; a resume with no recorded model pins the policy
+default too. Other vendors (agy, grok, cursor, opencode) keep their own tier maps and raw-slug
+passthrough.
+
 ### Skills and tiers
 
 | Skill | Tiers |
 |-------|-------|
-| delegate-codex | luna, terra, sol, astra |
+| delegate-codex | sol-low, sol, sol-high, astra |
 | delegate-antigravity | lite, flash, pro, sonnet, opus |
 | delegate-grok | fast, best |
-| delegate-claude | haiku, sonnet, opus |
+| delegate-claude | sonnet, opus |
 | delegate-cursor | auto, composer |
 | delegate-opencode | free, go |
 | delegates | Remaining quota and models for all six vendors |
@@ -301,7 +325,7 @@ orchestration guidance.
 |------|-------|--------|
 | `--cd DIR` | all | working directory |
 | `--name N` | all | reusable window name |
-| `--effort E` | all | model reasoning effort |
+| `--effort E` | all | reasoning effort; Codex tiers imply one (`sol-low` low, `sol` medium, `sol-high`/`astra` high), `--effort` overrides |
 | `--add-dir D` | all | extra working directory (repeatable) |
 | `--ro` | Codex | read-only sandbox |
 | `--full` | Codex | user configuration instead of clean room; repeat on resume |
@@ -313,7 +337,7 @@ orchestration guidance.
 | `--no-preflight` | all | skip the pre-spawn login check for the vendor CLI |
 | `--json` | route-check, pick | print one JSON line instead of a human-readable line |
 | `--self VENDOR` | route-check | whose routing policy to report (only `claude` supported today) |
-| `--priority v1,v2,...` | run auto | vendor try-order (default `agy,codex,grok,cursor,opencode,claude`) |
+| `--priority v1,v2,...` | run auto | vendor try-order (default `codex,opencode,claude`) |
 | `--max-hops N` | run auto | max vendor hand-off attempts (default 2) |
 
 Codex uses `workspace-write` (or `--ro`), with an auth-only `~/.codex-fresh`
@@ -360,8 +384,8 @@ Status shows CLI, LEFT, and MODELS columns. Example:
 
 ```
 CLI     LEFT                                                    MODELS
-claude  wk 62% · 5h 100%                                       opus-5.5 sonnet-5.5 haiku-4.5
-codex   wk 85% (reset 134h) · 5h 100%                          gpt-5.6-luna gpt-5.6-terra gpt-6.1-sol gpt-6-astra
+claude  wk 62% · 5h 100%                                       opus-5.5 sonnet-5.5
+codex   wk 85% (reset 134h) · 5h 100%                          gpt-6.1-sol gpt-6-astra
 agy     gemini wk 43% · claude/gpt wk 100%                     gemini-3.8-flash{l/m/h} gemini-3.1-pro{l/m/h} ...
 grok    logged in · quota via --probe-grok                     grok-4.5 grok-4.6
 cursor  included 85% left · resets Oct 16 (auto 85% · api 91%) auto composer-2.5 ...
@@ -384,18 +408,18 @@ HTTP failure so the row never throws; OpenCode uses auth-file presence plus
 agent-delegates run auto BRIEF.md --cd "/path/to/repo"
 agent-delegates run auto BRIEF.md --priority agy,codex,grok --cd "/path/to/repo"
 agent-delegates run auto BRIEF.md --max-hops 1 --cd "/path/to/repo"
-agent-delegates handoff /path/to/out-dir codex terra --cd "/path/to/repo"
+agent-delegates handoff /path/to/out-dir codex sol --cd "/path/to/repo"
 ```
 
 `run auto <brief-file|->` picks the first vendor with quota from a priority
 list, judged from the same status-row text `agent-delegates status` prints
 (installed, logged in, quota left), and runs the brief there. Default order
-is `agy, codex, grok, cursor, opencode, claude` — claude last because a
+is `codex, opencode, claude` (agy/grok/cursor are opt-in via `--priority`/`routing.json`, so `pick` never suggests a vendor you didn't install) — claude last because a
 missing rate-limit snapshot reads as "unknown" and is treated as usable, so
 it would otherwise mask real exhaustion upstream. `--priority` overrides the
 order (comma-separated vendor ids). `run auto` uses each vendor's own
-default tier — agy flash, codex terra, grok best, claude sonnet, cursor auto,
-opencode free — on both the initial run and every hop, **unless the brief is
+default tier — codex sol, claude sonnet, opencode free (and, if opted in, agy flash, grok best, cursor auto) 
+— on both the initial run and every hop, **unless the brief is
 critical** (explicit `--critical`, or a `guard.paths` match against
 `--cd`/`--add-dir`), in which case it uses the vendor's large `CRITICAL_TIER`
 instead (see "Critical work and permissions" below) and drops vendors with
@@ -469,7 +493,7 @@ Defaults (missing/invalid file, or a partial file merged over these):
   "fiveHourCap": 80,
   "hardCap": 70,
   "staleMinutes": 10,
-  "priority": ["agy", "codex", "grok", "cursor", "opencode", "claude"]
+  "priority": ["codex", "opencode", "claude"]
 }
 ```
 
@@ -534,7 +558,7 @@ Four possible JSON shapes:
 ```json
 {"route":"claude","reason":"wk 3% used vs 6.9% of week elapsed (+10 slack); within pace","suggest":"do the work in-house"}
 {"route":"unknown","reason":"no Claude quota snapshot","suggest":"do the work in-house"}
-{"route":"external","vendor":"agy","tier":"flash","critical":false,"reason":"wk 60% used vs 14% of week elapsed (+10 slack)","command":"agent-delegates run agy flash BRIEF.md --cd <dir>"}
+{"route":"external","vendor":"codex","tier":"sol","critical":false,"reason":"wk 60% used vs 14% of week elapsed (+10 slack)","command":"agent-delegates run codex sol BRIEF.md --cd <dir>"}
 {"route":"none","reason":"all external vendors exhausted or logged out; stay in-house","suggest":"do the work in-house"}
 ```
 
@@ -573,7 +597,7 @@ none, so they're refused outright unless `--allow-small`:
 
 | Vendor | Large tier used | `--allow-small` still refuses? |
 |--------|-----------------|-----------------------------------|
-| codex | `sol` (or `astra`) | no — either passes |
+| codex | `sol-high` (or `astra`, explicit only) | no — either passes |
 | agy | `opus` | no |
 | claude | `opus` | no |
 | grok | `best` | no |

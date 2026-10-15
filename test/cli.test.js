@@ -25,13 +25,13 @@ async function runMain(argv) {
 }
 
 test('m6: `run --model X` errors clearly instead of silently ignoring --model', async () => {
-  const { exitCode, errors } = await runMain(['run', '--model', 'gpt-custom', 'codex', 'terra', '/tmp/does-not-matter.md']);
+  const { exitCode, errors } = await runMain(['run', '--model', 'gpt-custom', 'codex', 'sol', '/tmp/does-not-matter.md']);
   assert.equal(exitCode, 2);
   assert.ok(errors.some(e => /--tier\/--model are only valid on resume/.test(e)), JSON.stringify(errors));
 });
 
 test('m6: `run --tier X` (in addition to the positional tier/model) also errors clearly', async () => {
-  const { exitCode, errors } = await runMain(['run', '--tier', 'sol', 'codex', 'terra', '/tmp/does-not-matter.md']);
+  const { exitCode, errors } = await runMain(['run', '--tier', 'sol', 'codex', 'sol', '/tmp/does-not-matter.md']);
   assert.equal(exitCode, 2);
   assert.ok(errors.some(e => /--tier\/--model are only valid on resume/.test(e)), JSON.stringify(errors));
 });

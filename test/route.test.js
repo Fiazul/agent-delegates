@@ -11,7 +11,7 @@ const test = require('node:test');
 const { isHopWorthy, pickVendor, runAuto } = require('../lib/route');
 
 test('pickVendor: claude usable with wk N% > 0', () => {
-  const rows = [['claude', 'wk 42% · 5h 88%', 'opus-5.5 sonnet-5.5 haiku-4.5']];
+  const rows = [['claude', 'wk 42% · 5h 88%', 'opus-5.5 sonnet-5.5']];
   assert.equal(pickVendor(rows, ['claude']), 'claude');
 });
 
@@ -31,24 +31,24 @@ test('pickVendor: codex logged out is unusable', () => {
 });
 
 test('pickVendor: codex EXHAUSTED suffix is unusable', () => {
-  const rows = [['codex', 'wk 40% (reset 3h) · 5h 20%  EXHAUSTED', 'gpt-5.6-terra']];
+  const rows = [['codex', 'wk 40% (reset 3h) · 5h 20%  EXHAUSTED', 'gpt-6.1-sol']];
   assert.equal(pickVendor(rows, ['codex']), null);
 });
 
 test('pickVendor: codex "usage unavailable" treated as usable (unknown)', () => {
-  const rows = [['codex', 'usage unavailable', 'gpt-5.6-terra']];
+  const rows = [['codex', 'usage unavailable', 'gpt-6.1-sol']];
   assert.equal(pickVendor(rows, ['codex']), 'codex');
 });
 
 test('pickVendor: codex unusable when either bucket is 0%', () => {
-  const rows = [['codex', 'wk 0% (reset 3h) · 5h 20%', 'gpt-5.6-terra']];
+  const rows = [['codex', 'wk 0% (reset 3h) · 5h 20%', 'gpt-6.1-sol']];
   assert.equal(pickVendor(rows, ['codex']), null);
-  const rows2 = [['codex', 'wk 40% (reset 3h) · 5h 0%', 'gpt-5.6-terra']];
+  const rows2 = [['codex', 'wk 40% (reset 3h) · 5h 0%', 'gpt-6.1-sol']];
   assert.equal(pickVendor(rows2, ['codex']), null);
 });
 
 test('pickVendor: codex usable when both buckets > 0%', () => {
-  const rows = [['codex', 'wk 40% (reset 3h) · 5h 20%', 'gpt-5.6-terra']];
+  const rows = [['codex', 'wk 40% (reset 3h) · 5h 20%', 'gpt-6.1-sol']];
   assert.equal(pickVendor(rows, ['codex']), 'codex');
 });
 
@@ -56,11 +56,11 @@ test('pickVendor: codex handles unrounded fractional percentages (F2)', () => {
   // status.js does not round codex percentages: a near-zero-but-positive quota looks like
   // "wk 0.4000000000000057%" — the old \d+-only regex failed to match this at all and fell
   // through to "usable" regardless of the actual (near-zero) value.
-  const usable = [['codex', 'wk 0.4000000000000057% (reset 3h) · 5h 12.5%', 'gpt-5.6-terra']];
+  const usable = [['codex', 'wk 0.4000000000000057% (reset 3h) · 5h 12.5%', 'gpt-6.1-sol']];
   assert.equal(pickVendor(usable, ['codex']), 'codex');
-  const zeroWk = [['codex', 'wk 0% (reset 3h) · 5h 12.5%', 'gpt-5.6-terra']];
+  const zeroWk = [['codex', 'wk 0% (reset 3h) · 5h 12.5%', 'gpt-6.1-sol']];
   assert.equal(pickVendor(zeroWk, ['codex']), null);
-  const zero5h = [['codex', 'wk 40.25% (reset 3h) · 5h 0.0%', 'gpt-5.6-terra']];
+  const zero5h = [['codex', 'wk 40.25% (reset 3h) · 5h 0.0%', 'gpt-6.1-sol']];
   assert.equal(pickVendor(zero5h, ['codex']), null);
 });
 
@@ -118,12 +118,15 @@ test('pickVendor: returns first usable in priority order, else null', () => {
 });
 
 test('runAuto: first vendor succeeds -> one attempt, no handoff called', async () => {
-  const rows = [['agy', 'gemini wk 45% · claude/gpt wk 10%', '?']];
+  // Default priority (codex -> opencode -> claude): agy has quota too but must NOT be chosen.
+  const rows = [['agy', 'gemini wk 45% · claude/gpt wk 10%', '?'], ['codex', 'wk 40% (reset 3h) · 5h 20%', '?']];
   let handoffCalls = 0;
-  const invoke = async (mode, vendor, tier) => ({ code: 0, outDir: '/out/agy-1', vendor, tier, failed: false, exhausted: false });
+  const invokeCalls = [];
+  const invoke = async (mode, vendor, tier) => { invokeCalls.push({ vendor, tier }); return { code: 0, outDir: '/out/codex-1', vendor, tier, failed: false, exhausted: false }; };
   const result = await runAuto('brief.md', { rows, invoke, handoff: async () => { handoffCalls++; } }, '');
   assert.equal(result.code, 0);
-  assert.equal(result.vendor, 'agy');
+  assert.equal(result.vendor, 'codex');
+  assert.deepEqual(invokeCalls, [{ vendor: 'codex', tier: 'sol' }]);
   assert.equal(result.attempts.length, 1);
   assert.equal(handoffCalls, 0);
 });
@@ -146,7 +149,7 @@ test('runAuto: first exhausted -> handoff called with outDir and next vendor, tw
   const result = await runAuto('brief.md', { rows, priority: 'agy,codex', invoke, handoff }, '');
   assert.equal(invokeCalls.length, 1);
   assert.equal(handoffCalls.length, 1);
-  assert.deepEqual(handoffCalls[0], { outDir: '/out/agy-1', targetVendor: 'codex', tier: 'terra' });
+  assert.deepEqual(handoffCalls[0], { outDir: '/out/agy-1', targetVendor: 'codex', tier: 'sol' });
   assert.equal(result.vendor, 'codex');
   assert.equal(result.code, 0);
   assert.equal(result.attempts.length, 2);
@@ -224,7 +227,7 @@ test('runAuto: always uses each vendor\'s own default tier, ignoring options.tie
   };
   await runAuto('brief.md', { rows, priority: 'agy,codex', tier: 'opus', invoke, handoff }, '');
   assert.equal(invokeCalls[0].tier, 'flash'); // agy default, not the bogus cross-vendor "opus"
-  assert.equal(handoffCalls[0].tier, 'terra'); // codex default
+  assert.equal(handoffCalls[0].tier, 'sol'); // codex default
 });
 
 test('runAuto: nothing usable -> throws with tried list', async () => {
@@ -318,7 +321,7 @@ test('runAuto: critical work picks CRITICAL_TIER, skips vendors with no large ti
   assert.equal(invokeCalls[0].vendor, 'agy');
   assert.equal(invokeCalls[0].tier, 'opus'); // CRITICAL_TIER.agy
   assert.equal(handoffCalls[0].targetVendor, 'codex');
-  assert.equal(handoffCalls[0].tier, 'sol'); // CRITICAL_TIER.codex
+  assert.equal(handoffCalls[0].tier, 'sol-high'); // CRITICAL_TIER.codex
   // cursor/opencode were never tried — both filtered out for having no large tier
   assert.equal(result.attempts.some(a => a.vendor === 'cursor' || a.vendor === 'opencode'), false);
 });
@@ -414,7 +417,7 @@ test('runAuto: a relative --cd ("." ) into a guard.paths-guarded directory resol
     assert.equal(result.code, 0);
     assert.equal(invokeCalls.length, 1);
     assert.equal(invokeCalls[0].vendor, 'codex');
-    assert.equal(invokeCalls[0].tier, 'sol'); // CRITICAL_TIER.codex — proves critical was detected
+    assert.equal(invokeCalls[0].tier, 'sol-high'); // CRITICAL_TIER.codex — proves critical was detected
   } finally {
     process.chdir(savedCwd);
     if (savedHome == null) delete process.env.HOME; else process.env.HOME = savedHome;
@@ -453,7 +456,7 @@ test('runAuto: no --cd inside a guarded directory still resolves via process.cwd
     const result = await runAuto('brief.md', { rows, priority: 'codex,cursor,opencode', invoke, respectPolicy: false }, '');
     assert.equal(result.code, 0);
     assert.equal(invokeCalls.length, 1);
-    assert.equal(invokeCalls[0].tier, 'sol'); // CRITICAL_TIER.codex — proves critical was detected with no --cd
+    assert.equal(invokeCalls[0].tier, 'sol-high'); // CRITICAL_TIER.codex — proves critical was detected with no --cd
     assert.equal(result.attempts.some(a => a.vendor === 'cursor' || a.vendor === 'opencode'), false);
   } finally {
     process.chdir(savedCwd);

@@ -131,28 +131,28 @@ test('permissionMode reports per-vendor bypass state', () => {
 });
 
 test('enforce refuses a small model on critical work and allows override', () => {
-  const refused = enforce({ vendor: 'codex', tier: 'luna', model: 'gpt-5.6-luna', critical: true, reasons: ['--critical flag set'], options: {}, mode: 'run' });
+  const refused = enforce({ vendor: 'codex', tier: 'sol-low', model: 'gpt-6.1-sol', critical: true, reasons: ['--critical flag set'], options: {}, mode: 'run' });
   assert.equal(refused.ok, false);
   assert.match(refused.message, /CRITICAL WORK/);
   assert.match(refused.message, /small model; critical work requires a large model/);
-  assert.match(refused.message, /sol/);
+  assert.match(refused.message, /sol-high/);
 
-  const allowed = enforce({ vendor: 'codex', tier: 'luna', model: 'gpt-5.6-luna', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'run' });
+  const allowed = enforce({ vendor: 'codex', tier: 'sol-low', model: 'gpt-6.1-sol', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'run' });
   assert.equal(allowed.ok, true);
 });
 
 test('enforce refuses a standard model on critical work (only large passes)', () => {
-  const refused = enforce({ vendor: 'codex', tier: 'terra', model: 'gpt-5.6-terra', critical: true, reasons: ['x'], options: {}, mode: 'run' });
+  const refused = enforce({ vendor: 'codex', tier: 'sol', model: 'gpt-6.1-sol', critical: true, reasons: ['x'], options: {}, mode: 'run' });
   assert.equal(refused.ok, false);
   assert.match(refused.message, /standard model; critical work requires a large model/);
-  assert.match(refused.message, /sol/);
+  assert.match(refused.message, /sol-high/);
 
-  const allowed = enforce({ vendor: 'codex', tier: 'terra', model: 'gpt-5.6-terra', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'run' });
+  const allowed = enforce({ vendor: 'codex', tier: 'sol', model: 'gpt-6.1-sol', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'run' });
   assert.equal(allowed.ok, true);
 });
 
-test('enforce passes a large model on critical work (codex sol, grok best)', () => {
-  const sol = enforce({ vendor: 'codex', tier: 'sol', model: 'gpt-6.1-sol', critical: true, reasons: ['x'], options: {}, mode: 'run' });
+test('enforce passes a large model on critical work (codex sol-high, grok best)', () => {
+  const sol = enforce({ vendor: 'codex', tier: 'sol-high', model: 'gpt-6.1-sol', critical: true, reasons: ['x'], options: {}, mode: 'run' });
   assert.equal(sol.ok, true);
   const grokBest = enforce({ vendor: 'grok', tier: 'best', model: 'grok-4.6', critical: true, reasons: ['x'], options: {}, mode: 'run' });
   assert.equal(grokBest.ok, true);
@@ -177,14 +177,14 @@ test('enforce treats an unresolvable raw model slug as not-large (a typo cannot 
 
 test('enforce caps the reasons list embedded in the refusal message to 5, with a "+N more" tail', () => {
   const reasons = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7'];
-  const refused = enforce({ vendor: 'codex', tier: 'terra', model: 'gpt-5.6-terra', critical: true, reasons, options: {}, mode: 'run' });
+  const refused = enforce({ vendor: 'codex', tier: 'sol', model: 'gpt-6.1-sol', critical: true, reasons, options: {}, mode: 'run' });
   assert.equal(refused.ok, false);
   assert.match(refused.message, /r1; r2; r3; r4; r5; \+2 more/);
   assert.doesNotMatch(refused.message, /r6/);
 });
 
 test('enforce never refuses when only suspected (critical: false), regardless of tier', () => {
-  const result = enforce({ vendor: 'codex', tier: 'luna', model: 'gpt-5.6-luna', critical: false, reasons: [], options: {}, mode: 'run' });
+  const result = enforce({ vendor: 'codex', tier: 'sol-low', model: 'gpt-6.1-sol', critical: false, reasons: [], options: {}, mode: 'run' });
   assert.equal(result.ok, true);
 });
 
@@ -205,13 +205,13 @@ test('enforce never refuses on resume, but still warns', () => {
 // the model was fixed at thread creation — but it must still WARN, not go silent, when a
 // follow-up brief reassesses as critical on a small/standard model).
 test('R10: enforce warns (never refuses, no --allow-small needed) when a resume follow-up is critical on a small model', () => {
-  const result = enforce({ vendor: 'codex', tier: 'luna', model: 'gpt-5.6-luna', critical: true, reasons: ['--critical flag set'], options: {}, mode: 'resume' });
+  const result = enforce({ vendor: 'codex', tier: 'sol-low', model: 'gpt-6.1-sol', critical: true, reasons: ['--critical flag set'], options: {}, mode: 'resume' });
   assert.equal(result.ok, true);
   assert.ok(result.warnings.some(w => /CRITICAL/.test(w) && /small model/.test(w)), JSON.stringify(result.warnings));
 });
 
 test('R10: enforce prints no critical warning on resume when the follow-up is not critical', () => {
-  const result = enforce({ vendor: 'codex', tier: 'luna', model: 'gpt-5.6-luna', critical: false, reasons: [], options: {}, mode: 'resume' });
+  const result = enforce({ vendor: 'codex', tier: 'sol-low', model: 'gpt-6.1-sol', critical: false, reasons: [], options: {}, mode: 'resume' });
   assert.equal(result.ok, true);
   assert.equal(result.warnings.length, 0);
 });
@@ -221,19 +221,19 @@ test('R10: enforce prints no critical warning on resume when the follow-up is no
 // reflect that --tier/--model can actually pin a model on a resumed thread now.
 test('m3: enforce\'s resume warning prints the resolved model, not the thread/session id passed as `tier`', () => {
   const result = enforce({
-    vendor: 'codex', tier: 'thread-9f3c1-not-a-tier-name', model: 'gpt-5.6-luna',
+    vendor: 'codex', tier: 'thread-9f3c1-not-a-tier-name', model: 'gpt-6.1-sol',
     critical: true, reasons: ['x'], options: {}, mode: 'resume'
   });
   assert.equal(result.ok, true);
   const warning = result.warnings.find(w => /CRITICAL WORK on resume/.test(w));
   assert.ok(warning, JSON.stringify(result.warnings));
   assert.ok(!warning.includes('thread-9f3c1-not-a-tier-name'), warning);
-  assert.match(warning, /gpt-5\.6-luna/);
+  assert.match(warning, /gpt-6\.1-sol/);
   assert.match(warning, /--tier\/--model/);
 });
 
 test('R10: enforce prints no critical warning on resume when the model is already large', () => {
-  const result = enforce({ vendor: 'codex', tier: 'sol', model: 'gpt-6.1-sol', critical: true, reasons: ['x'], options: {}, mode: 'resume' });
+  const result = enforce({ vendor: 'codex', tier: 'sol-high', model: 'gpt-6.1-sol', critical: true, reasons: ['x'], options: {}, mode: 'resume' });
   assert.equal(result.ok, true);
   assert.equal(result.warnings.some(w => /CRITICAL WORK on resume/.test(w)), false);
 });
@@ -241,13 +241,13 @@ test('R10: enforce prints no critical warning on resume when the model is alread
 // R12: an --allow-small override on critical work used to pass through silently; it must now
 // surface a warning saying the override is in effect.
 test('R12: enforce warns when --allow-small actually overrides a refusal on critical work', () => {
-  const result = enforce({ vendor: 'codex', tier: 'luna', model: 'gpt-5.6-luna', critical: true, reasons: ['--critical flag set'], options: { allowSmall: true }, mode: 'run' });
+  const result = enforce({ vendor: 'codex', tier: 'sol-low', model: 'gpt-6.1-sol', critical: true, reasons: ['--critical flag set'], options: { allowSmall: true }, mode: 'run' });
   assert.equal(result.ok, true);
   assert.ok(result.warnings.some(w => /--allow-small override/.test(w)), JSON.stringify(result.warnings));
 });
 
 test('R12: enforce does not warn about --allow-small when the model is already large (override never needed)', () => {
-  const result = enforce({ vendor: 'codex', tier: 'sol', model: 'gpt-6.1-sol', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'run' });
+  const result = enforce({ vendor: 'codex', tier: 'sol-high', model: 'gpt-6.1-sol', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'run' });
   assert.equal(result.ok, true);
   assert.equal(result.warnings.some(w => /--allow-small override/.test(w)), false);
 });
@@ -316,4 +316,14 @@ test('assessCriticality: an empty cwd defaults to process.cwd() (F1)', () => {
     process.chdir(originalCwd);
     fs.rmSync(scratch, { recursive: true, force: true });
   }
+});
+
+test('enforce: critical codex = sol at high only; astra passes only when chosen explicitly; sol/sol-low refused', () => {
+  const ok = tier => enforce({ vendor: 'codex', tier, model: tier === 'astra' ? 'gpt-6-astra' : 'gpt-6.1-sol', critical: true, reasons: ['x'], options: {}, mode: 'run' });
+  assert.equal(ok('sol-high').ok, true);
+  assert.equal(ok('astra').ok, true);
+  assert.equal(ok('sol').ok, false);
+  assert.equal(ok('sol-low').ok, false);
+  const refused = ok('sol');
+  assert.match(refused.message, /Use sol-high/);
 });

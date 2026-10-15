@@ -33,7 +33,7 @@ test('handleUserPromptSubmit: unknown+stale -> one-line notice, not hookSpecific
 });
 
 test('commandTriggersCheck: matches agent-delegates run and claude invocations, not arbitrary commands', () => {
-  assert.equal(commandTriggersCheck('agent-delegates run codex terra brief.md'), true);
+  assert.equal(commandTriggersCheck('agent-delegates run codex sol brief.md'), true);
   assert.equal(commandTriggersCheck('claude --resume abc'), true);
   assert.equal(commandTriggersCheck('ls -la'), false);
   assert.equal(commandTriggersCheck(''), false);
@@ -55,7 +55,7 @@ test('handlePreToolUse: Bash tool without a triggering command -> nothing', () =
 });
 
 test('handlePreToolUse: Bash tool with "agent-delegates run" command + external route -> output', () => {
-  const stdinText = JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'agent-delegates run codex terra brief.md --cd /x' } });
+  const stdinText = JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'agent-delegates run codex sol brief.md --cd /x' } });
   const output = handlePreToolUse(stdinText, () => EXTERNAL);
   assert.ok(output);
 });
