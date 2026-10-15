@@ -32,7 +32,7 @@ unknown, hence refused for `--critical`/`--yolo` unless you pin `--tier glm|kimi
 
 ### Strengths — route by domain
 
-- **2D/3D/visual design** (UI layout, canvas/SVG, three.js/WebGL, game graphics, motion/visual polish): Codex `sol`/`astra`, OpenCode `kimi` (kimi-k3) — equal options, all beat Claude Opus here. Kimi's 3D sense is clearly better than Opus. Codex vs Kimi is unranked; pick by quota and availability. (`astra` only when the visual work is critical.)
+- **2D/3D/visual design** (UI layout, canvas/SVG, three.js/WebGL, game graphics, motion/visual polish), strict order: 1) Codex `sol` (gpt-6.1-sol, effort by task). 2) Codex `astra` only when the work is too critical for sol (e.g. MC design, important final polish) — always with `--critical`. 3) Codex unavailable (not installed, quota out, refused/failed) → OpenCode `kimi` (kimi-k3). 4) Last fallback: Claude Opus 5.5. Kimi's 3D sense beats Opus.
 - **Backend logic** (services, data pipelines, business logic, integrations, server-code debugging): Claude `opus` (Opus 5.5) beats Codex `sol` → prefer Claude Opus.
 
 ## Commands
