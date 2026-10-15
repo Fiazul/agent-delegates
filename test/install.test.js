@@ -1614,3 +1614,66 @@ test('review N3: real directories and files are backed up outside each main skil
     }
   }
 });
+
+test('F5: cross-device skill backups preserve files, directories and symlinks', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-exdev-'));
+  const root = path.join(home, '.claude', 'skills');
+  fs.mkdirSync(path.join(root, 'delegates'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'delegates', 'SKILL.md'), 'directory');
+  fs.writeFileSync(path.join(root, 'delegate-codex'), 'file');
+  fs.symlinkSync('delegate-codex', path.join(root, 'delegate-grok'));
+  const rename = fs.renameSync;
+  let failures = 0;
+  fs.renameSync = (src, dst) => {
+    if (path.dirname(src) === root) { failures++; throw Object.assign(new Error('cross-device'), { code: 'EXDEV' }); }
+    return rename(src, dst);
+  };
+  try {
+    await install({ home, main: 'claude', delegates: 'codex,grok', skipCliInstall: true, commandExists: () => true, env: {}, log() {} });
+  } finally { fs.renameSync = rename; }
+  assert.ok(failures >= 2);
+  const backups = path.join(installHome(home), 'backups', 'claude');
+  const names = fs.readdirSync(backups);
+  const backup = name => path.join(backups, names.find(n => n.startsWith(`${name}.bak-`)));
+  assert.equal(fs.readFileSync(path.join(backup('delegates'), 'SKILL.md'), 'utf8'), 'directory');
+  assert.equal(fs.readFileSync(backup('delegate-codex'), 'utf8'), 'file');
+  assert.equal(fs.readlinkSync(backup('delegate-grok')), path.join(root, 'delegate-codex'));
+});
+
+test('F5: relative foreign skill links retain their resolved target after backup', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-relative-'));
+  const root = path.join(home, '.claude', 'skills');
+  fs.mkdirSync(path.join(root, 'user-skill'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'user-skill', 'SKILL.md'), 'foreign');
+  fs.symlinkSync('user-skill', path.join(root, 'delegates'));
+  await install({ home, main: 'claude', delegates: 'codex', skipCliInstall: true, commandExists: () => true, env: {}, log() {} });
+  const backups = path.join(installHome(home), 'backups', 'claude');
+  const backup = path.join(backups, fs.readdirSync(backups)[0]);
+  assert.equal(fs.readlinkSync(backup), path.join(root, 'user-skill'));
+  assert.equal(fs.readFileSync(path.join(backup, 'SKILL.md'), 'utf8'), 'foreign');
+});
+
+test('F5: legacy skill backups migrate in every selected main, including deselected skills', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-legacy-backups-'));
+  const roots = { claude: '.claude', codex: '.codex', cursor: '.cursor', opencode: '.config/opencode' };
+  for (const prefix of Object.values(roots)) {
+    const root = path.join(home, prefix, 'skills');
+    fs.mkdirSync(path.join(root, 'delegate-grok.bak-old'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'delegate-grok.bak-old', 'SKILL.md'), 'legacy');
+    fs.writeFileSync(path.join(root, 'unrelated.bak-old'), 'keep');
+  }
+  const logs = [];
+  const options = { home, main: 'all', delegates: 'codex', skipCliInstall: true, commandExists: () => true, env: {}, log: l => logs.push(l) };
+  await install(options);
+  for (const [main, prefix] of Object.entries(roots)) {
+    const root = path.join(home, prefix, 'skills');
+    const backup = path.join(installHome(home), 'backups', main, 'delegate-grok.bak-old');
+    assert.equal(fs.existsSync(path.join(root, 'delegate-grok.bak-old')), false);
+    assert.equal(fs.readFileSync(path.join(backup, 'SKILL.md'), 'utf8'), 'legacy');
+    assert.equal(fs.readFileSync(path.join(root, 'unrelated.bak-old'), 'utf8'), 'keep');
+    assert.ok(logs.some(l => l.startsWith('migrated ') && l.includes(backup)));
+  }
+  logs.length = 0;
+  await install(options);
+  assert.equal(logs.some(l => l.startsWith('migrated ')), false);
+});

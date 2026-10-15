@@ -89,7 +89,7 @@ test('the refusal message names the eligible tiers', withFakes(async ({ briefFil
     /codex sol-high \| sol --effort high \| astra; claude opus; opencode glm \| kimi/);
 }));
 
-test('yolo refused on resume (recorded/default tier ineligible; explicit --tier sol-low) and handoff and run auto', withFakes(async ({ dir, briefFile, opts, cwd, spawned, reset, logs }) => {
+test('yolo refused on resume (recorded/default tier ineligible; explicit --tier sol-low) and handoff and run auto', withFakes(async ({ dir, briefFile, opts, cwd, spawned, reset, logs, args, lastMeta }) => {
   // resume: no recorded model -> policy default sol (standard) -> refused
   await assert.rejects(() => invoke('resume', 'codex', 'thread-x', briefFile, { ...opts, yolo: true }), refusal);
   await assert.rejects(() => invoke('resume', 'codex', 'thread-x', briefFile, { ...opts, yolo: true, tier: 'sol-low' }), refusal);
@@ -110,13 +110,15 @@ test('yolo refused on resume (recorded/default tier ineligible; explicit --tier 
   }
   assert.equal(spawned('codex') || spawned('claude') || spawned('opencode'), false);
 
-  // run auto: every candidate's default tier is ineligible -> each skipped with an AUTO line, nothing spawns
+  // run auto raises Claude to opus; other default tiers remain ineligible.
   const { runAuto } = require('../lib/route');
   reset();
   const rows = [['codex', 'wk 40% · 5h 20%', '?'], ['opencode', 'logged in · no quota API', '?'], ['claude', 'wk 40% · 5h 20%', '?']];
-  await assert.rejects(() => runAuto(briefFile, { ...opts, rows, priority: 'codex,opencode,claude', yolo: true, respectPolicy: false, home: path.join(dir, 'home') }, ''), /no vendor with quota and an eligible full-access tier/);
-  for (const v of ['codex', 'opencode', 'claude']) assert.ok(logs.some(l => l.startsWith(`AUTO: ${v} skipped — --yolo (full access) refused`)), `${v}: ${JSON.stringify(logs)}`);
-  assert.equal(spawned('codex') || spawned('claude') || spawned('opencode'), false);
+  await runAuto(briefFile, { ...opts, rows, priority: 'codex,opencode,claude', yolo: true, respectPolicy: false, home: path.join(dir, 'home') }, '');
+  for (const v of ['codex', 'opencode']) assert.ok(logs.some(l => l.startsWith(`AUTO: ${v} skipped — --yolo (full access) refused`)), `${v}: ${JSON.stringify(logs)}`);
+  assert.equal(spawned('codex') || spawned('opencode'), false);
+  assert.match(args('claude'), /claude-opus-5-5/);
+  assert.equal(lastMeta().elevated, true);
 }));
 
 test('run auto --yolo --critical routes opencode to its critical tier glm and runs it elevated', withFakes(async ({ dir, briefFile, opts, args, logs }) => {
@@ -437,7 +439,7 @@ test('run auto --yolo --effort high: codex (default tier sol) becomes eligible a
 
 test('run auto --yolo without --effort: codex sol (medium) is skipped', withFakes(async ({ dir, briefFile, opts, spawned, logs }) => {
   const { runAuto } = require('../lib/route');
-  await assert.rejects(() => runAuto(briefFile, { ...opts, rows: [['codex', 'wk 40% · 5h 20%', '?']], priority: 'codex', yolo: true, respectPolicy: false, home: path.join(dir, 'home') }, ''), /no vendor with quota and an eligible full-access tier/);
+  await assert.rejects(() => runAuto(briefFile, { ...opts, rows: [['codex', 'wk 40% · 5h 20%', '?']], priority: 'codex', yolo: true, respectPolicy: false, home: path.join(dir, 'home') }, ''), /no eligible vendor: --critical\/--yolo filtered out codex/);
   assert.equal(spawned('codex'), false);
 }));
 
@@ -540,7 +542,7 @@ test('review 8: agy opus and grok best yolo emit their flag, ELEVATED line and m
 
 test('review 8: run auto skips cursor for yolo and agy default never bypasses', withFakes(async ({ dir, briefFile, opts, spawned, args, logs, reset }) => {
   const { runAuto } = require('../lib/route');
-  await assert.rejects(() => runAuto(briefFile, { ...opts, priority: 'cursor', rows: [['cursor', 'logged in · no quota API', '?']], yolo: true, respectPolicy: false, home: path.join(dir, 'home') }), /no vendor with quota/);
+  await assert.rejects(() => runAuto(briefFile, { ...opts, priority: 'cursor', rows: [['cursor', 'logged in · no quota API', '?']], yolo: true, respectPolicy: false, home: path.join(dir, 'home') }), /no eligible vendor: --critical\/--yolo filtered out cursor/);
   assert.equal(spawned('cursor'), false);
   assert.ok(logs.some(l => /cursor skipped.*no frontier tier/.test(l)), JSON.stringify(logs));
   reset();

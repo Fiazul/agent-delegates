@@ -144,16 +144,16 @@ test('model policy: codex effort allowlist (low|medium|high); astra only at high
   assert.equal(resolveSelection('claude', 'opus', 'max').effort, 'max');
 });
 
-test('model policy: effectiveClass uses the effective effort for codex sol (large only at high); other vendors unchanged', () => {
-  const { effectiveClass } = require('../lib/models');
-  assert.equal(effectiveClass('codex', 'sol-high', 'low'), 'small');
-  assert.equal(effectiveClass('codex', 'sol-high', 'medium'), 'standard');
-  assert.equal(effectiveClass('codex', 'sol', 'high'), 'large');
-  assert.equal(effectiveClass('codex', 'sol-low', 'high'), 'large');
-  assert.equal(effectiveClass('codex', 'gpt-6.1-sol', 'high'), 'large');
-  assert.equal(effectiveClass('codex', 'sol-high'), 'large');
-  assert.equal(effectiveClass('codex', 'astra', 'high'), 'large');
-  assert.equal(effectiveClass('claude', 'opus', 'low'), 'large');
+test('model policy: selectionClass uses the effective effort for codex sol (large only at high); other vendors unchanged', () => {
+  const { selectionClass } = require('../lib/models');
+  assert.equal(selectionClass('codex', 'sol-high', 'gpt-6.1-sol', 'low'), 'small');
+  assert.equal(selectionClass('codex', 'sol-high', 'gpt-6.1-sol', 'medium'), 'standard');
+  assert.equal(selectionClass('codex', 'sol', 'gpt-6.1-sol', 'high'), 'large');
+  assert.equal(selectionClass('codex', 'sol-low', 'gpt-6.1-sol', 'high'), 'large');
+  assert.equal(selectionClass('codex', 'gpt-6.1-sol', 'gpt-6.1-sol', 'high'), 'large');
+  assert.equal(selectionClass('codex', 'sol-high', 'gpt-6.1-sol'), 'large');
+  assert.equal(selectionClass('codex', 'astra', 'gpt-6-astra', 'high'), 'large');
+  assert.equal(selectionClass('claude', 'opus', 'claude-opus-5-5', 'low'), 'large');
 });
 
 test('canonicalVendor: one normalizer (trim, lowercase, antigravity -> agy); non-strings pass through', () => {
@@ -164,7 +164,7 @@ test('canonicalVendor: one normalizer (trim, lowercase, antigravity -> agy); non
 });
 
 test('review M1: prototype vendor, tier, model and effort keys never resolve inherited map entries', () => {
-  const { effectiveClass, selectionClass, tierForModel, validateEffort } = require('../lib/models');
+  const { selectionClass, tierForModel, validateEffort } = require('../lib/models');
   for (const key of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
     assert.throws(() => resolveModel(key, 'anything'), /unknown vendor/);
     assert.equal(tierClass(key, 'anything'), 'unknown');
@@ -175,6 +175,10 @@ test('review M1: prototype vendor, tier, model and effort keys never resolve inh
       if (vendor !== 'cursor') assert.throws(() => resolveSelection(vendor, key));
     }
     assert.throws(() => validateEffort('codex', 'gpt-6.1-sol', key), /allowed efforts/);
-    assert.equal(effectiveClass('codex', key, 'high'), 'unknown');
+    assert.equal(selectionClass('codex', key, key, 'high'), 'unknown');
   }
+});
+
+test('F4: tier-first effectiveClass is no longer exported', () => {
+  assert.equal(require('../lib/models').effectiveClass, undefined);
 });

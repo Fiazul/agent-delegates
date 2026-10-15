@@ -807,3 +807,39 @@ test('review N2: an ineligible policy Claude candidate is skipped with a reason 
     console.log = originalLog;
   }
 });
+
+test('F3: priority and policy Claude use one opus upgrade rule and log it', async () => {
+  for (const policy of [false, true]) {
+    for (const flags of [{ yolo: true }, { critical: true }, { critical: true, allowSmall: true }]) {
+      const logs = [];
+      const saved = console.log;
+      console.log = line => logs.push(line);
+      try {
+        const result = await runAuto('-', {
+          ...flags, priority: 'claude', rows: [['claude', 'wk 40% · 5h 20%', '?']],
+          respectPolicy: policy, decide: () => ({ route: 'claude', reason: 'available' }),
+          resolveBin: () => ({ command: 'fake' }),
+          invoke: async (mode, vendor, tier, brief, options) => {
+            assert.equal(tier, 'opus');
+            const selection = require('../lib/models').resolveSelection(vendor, tier);
+            const verdict = require('../lib/guard').enforce({ vendor, ...selection, critical: Boolean(flags.critical), options, mode });
+            assert.equal(verdict.ok, true);
+            assert.equal(Boolean(verdict.elevated), Boolean(flags.yolo));
+            return { code: 0, outDir: '/tmp/fake' };
+          }
+        }, 'reply OK');
+        assert.equal(result.vendor, 'claude');
+        assert.equal(logs.filter(l => l === `AUTO: claude raised to opus (${flags.yolo ? '--yolo' : '--critical'})`).length, 1);
+      } finally { console.log = saved; }
+    }
+  }
+});
+
+test('F6: all candidates removed by critical/yolo filters names the filtered vendors', async () => {
+  for (const flags of [{ critical: true }, { yolo: true }, { critical: true, yolo: true }]) {
+    await assert.rejects(runAuto('-', {
+      ...flags, priority: 'cursor', rows: [['cursor', 'logged in · no quota API', '?']], respectPolicy: false,
+      resolveBin: () => ({ command: 'fake' }), invoke: async () => assert.fail('must not invoke')
+    }, 'reply OK'), /no eligible vendor: --critical\/--yolo filtered out cursor/);
+  }
+});

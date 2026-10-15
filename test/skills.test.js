@@ -53,7 +53,7 @@ test('docs (F6/F10): README + opencode/claude skills document the explicit large
     for (const slug of ['opencode-go/glm-5.3', 'opencode-go/glm-5.2', 'opencode-go/kimi-k3', 'opencode-go/kimi-k2.7-code']) assert.ok(text.includes(slug), slug);
     assert.match(text, /added to (that|the) list by hand|add its slug\s+to the list by hand/i);
   }
-  assert.match(readme, /Class comes from the tier\/model only for claude and opencode/);
+  assert.match(readme, /Class comes from the tier\/model only for claude, opencode and grok/);
   assert.match(oc, /`--effort` \(`--variant`\) never changes it/);
   assert.match(cl, /`--effort`\s+never changes it/);
   for (const text of [readme, oc]) assert.doesNotMatch(text, /opencode-go\/glm-\*/);

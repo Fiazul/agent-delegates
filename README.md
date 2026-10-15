@@ -636,10 +636,11 @@ tier to promote to. OpenCode critical work (`--critical`/guard path) runs only w
 `--yolo`, no `--critical`. A new frontier OpenCode model is NOT picked up by name pattern; add its slug
 to the list by hand (plus docs/tests).
 
-**Class comes from the tier/model only for claude and opencode.** `--effort` does not change the class of
-a claude tier or an opencode model (it is passed through as `--effort` / `--variant`); only Codex
+**Class comes from the tier/model only for claude, opencode and grok.** `--effort` does not change their class
+(it is passed through as `--effort` / `--variant`); only Codex
 `gpt-6.1-sol` is effort-driven (low small, medium standard, high large). So `claude sonnet --effort high`
-is still standard, and `opencode free --effort high` is still small.
+is still standard, `opencode free --effort high` is still small, and `grok fast --effort high`
+is still standard.
 
 ### Full access gate (`--yolo`)
 

@@ -17,7 +17,9 @@ Critical work (`--critical`): only `best` allowed.
 | `fast` | grok-4.5 | Sonnet | standard build / fix / test |
 | `best` | grok-4.6 | Opus | hard tasks, reviews |
 
-`--effort E` selects reasoning effort. Raw model slugs also accepted.
+`--effort E` selects reasoning effort. Class comes from the tier/model only, like Claude
+and OpenCode; effort does not change it. `fast --effort high` is still standard
+and cannot qualify for `--critical` or `--yolo`. Raw model slugs also accepted.
 
 ## Commands
 
