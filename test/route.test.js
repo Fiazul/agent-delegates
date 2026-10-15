@@ -671,3 +671,62 @@ test('runAuto --self codex: the main agent\'s own vendor is dropped from the pri
   } finally { console.log = orig; }
   assert.deepEqual(calls, ['opencode']);
 });
+
+test('F5: runAuto --self claude with a stay-on-claude verdict does NOT re-prepend claude; reports stay in-house', async () => {
+  const calls = [];
+  const logs = [];
+  const orig = console.log;
+  console.log = (...a) => logs.push(a.join(' '));
+  try {
+    const result = await runAuto('brief.md', {
+      self: 'claude', priority: 'claude,codex', respectPolicy: true,
+      decide: () => ({ route: 'claude', reason: 'wk 30% used vs 14% of week elapsed' }),
+      rows: [['claude', 'wk 40% · 5h 20%', '?'], ['codex', 'wk 40% · 5h 20%', '?']],
+      assess: () => ({ critical: false, suspected: false, hints: [] }),
+      resolveBin: () => ({ command: 'x' }),
+      invoke: async (mode, vendor) => { calls.push(vendor); return { code: 0, outDir: '/tmp/x', exhausted: false, failed: false }; }
+    }, '');
+    assert.equal(result.vendor, 'codex');
+  } finally { console.log = orig; }
+  assert.deepEqual(calls, ['codex'], 'claude never spawned under --self claude');
+  assert.ok(logs.some(l => /^AUTO: policy says stay in-house/.test(l)), JSON.stringify(logs));
+  assert.equal(logs.some(l => /stay on Claude/.test(l)), false);
+});
+
+test('F5 control: without --self claude the stay-on-claude verdict still prepends claude', async () => {
+  const calls = [];
+  const orig = console.log;
+  console.log = () => {};
+  try {
+    await runAuto('brief.md', {
+      priority: 'codex,claude', respectPolicy: true,
+      decide: () => ({ route: 'claude', reason: 'x' }),
+      rows: [['claude', 'wk 40% · 5h 20%', '?'], ['codex', 'wk 40% · 5h 20%', '?']],
+      assess: () => ({ critical: false, suspected: false, hints: [] }),
+      resolveBin: () => ({ command: 'x' }),
+      invoke: async (mode, vendor) => { calls.push(vendor); return { code: 0, outDir: '/tmp/x', exhausted: false, failed: false }; }
+    }, '');
+  } finally { console.log = orig; }
+  assert.deepEqual(calls, ['claude']);
+});
+
+test('F8: vendor names normalize identically for --self and priority entries (case, whitespace, antigravity -> agy)', async () => {
+  const { resolvePriority, selfVendor } = require('../lib/policy');
+  assert.deepEqual(resolvePriority(' Antigravity , CODEX,codex, Claude ', null), ['agy', 'codex', 'claude']);
+  assert.deepEqual(resolvePriority(undefined, { priority: ['Antigravity', 'OpenCode'] }), ['agy', 'opencode']);
+  for (const [input, want] of [['Antigravity', 'agy'], [' AGY ', 'agy'], ['CLAUDE', 'claude'], [undefined, '']]) assert.equal(selfVendor({ self: input }), want, String(input));
+  // --self Antigravity drops an `antigravity`/`AGY` priority entry; --self CLAUDE drops claude
+  const calls = [];
+  const orig = console.log;
+  console.log = () => {};
+  try {
+    await runAuto('brief.md', {
+      self: 'Antigravity', priority: 'AGY,Codex', respectPolicy: false,
+      rows: [['agy', 'gemini wk 45% · claude/gpt wk 10%', '?'], ['codex', 'wk 40% · 5h 20%', '?']],
+      assess: () => ({ critical: false, suspected: false, hints: [] }),
+      resolveBin: () => ({ command: 'x' }),
+      invoke: async (mode, vendor) => { calls.push(vendor); return { code: 0, outDir: '/tmp/x', exhausted: false, failed: false }; }
+    }, '');
+  } finally { console.log = orig; }
+  assert.deepEqual(calls, ['codex']);
+});

@@ -256,7 +256,8 @@ place.
 ## Commands
 
 ```sh
-agent-delegates status                                       # quota table
+agent-delegates status                                       # quota table: claude + vendors in routing.json priority
+agent-delegates status --all                                 # every vendor row (agy, grok, cursor too)
 agent-delegates status --probe-grok                          # refresh Grok (tiny paid call)
 agent-delegates run codex sol BRIEF.md --cd "/path/to/repo"
 agent-delegates resume codex THREAD_ID FOLLOWUP.md --cd "/path/to/repo" [--tier T | --model M]
@@ -333,7 +334,7 @@ orchestration guidance.
 | `--effort E` | all | reasoning effort; Codex tiers imply one (`sol-low` low, `sol` medium, `sol-high`/`astra` high), `--effort` overrides |
 | `--add-dir D` | all | extra working directory (repeatable) |
 | `--ro` | Codex | read-only sandbox |
-| `--full` | Codex | user configuration instead of clean room; repeat on resume |
+| `--full` | Codex | user configuration instead of clean room; repeat on resume. The sandbox is still pinned on resume |
 | `--safe` | agy | accept-edits mode (default is full permission) |
 | `--yolo` | Grok, Claude, Cursor, OpenCode, Codex | full permission mode. Codex/Claude/OpenCode: frontier tiers only (see "Full access gate") |
 | `--critical` | all | mark this brief as critical work (prod/servers/live data): a large-tier model is required (see "Critical work and permissions") |
@@ -370,8 +371,9 @@ each later stream event re-arms the grace timer. Ctrl-C, SIGTERM, and SIGHUP kil
 the whole worker tree; `interrupt` first verifies the recorded pid is still that worker.
 
 **Vendor option differences:** Codex resume pins its model with `-c model=<slug>`
-and sandbox with `-c sandbox_mode=` plus `--ignore-user-config` (unless `--full`),
-and passes `--effort`; it warns that
+and ALWAYS pins the sandbox with `-c sandbox_mode=<workspace-write|read-only|danger-full-access>`
+(`--ignore-user-config` and the clean-room `--disable` flags are dropped under `--full`, the sandbox pin is
+not), and passes `--effort`; it warns that
 `--add-dir` is unsupported. Cursor passes `--add-dir`; Grok/OpenCode warn when
 it is unsupported; OpenCode maps `--effort` to `--variant`.
 
@@ -602,8 +604,9 @@ effort `high` is large, so `sol-high --critical --effort low` is refused while
 recorded at a lower class is refused too; pin a large one with `--tier sol-high` / `--effort high`
 (or `--model`), or pass `--allow-small`.
 
-**Which tiers pass on critical work** — only `large`-class tiers; `cursor` and `opencode` have
-none, so they're refused outright unless `--allow-small`:
+**Which tiers pass on critical work** — only `large`-class tiers; `cursor` has none, so it is refused
+outright unless `--allow-small`. OpenCode critical work needs an allowlisted large model and
+`--allow-small` never overrides that:
 
 | Vendor | Large tier used | `--allow-small` still refuses? |
 |--------|-----------------|-----------------------------------|
@@ -612,21 +615,35 @@ none, so they're refused outright unless `--allow-small`:
 | claude | `opus` | no |
 | grok | `best` | no |
 | cursor | *(none)* | no* |
-| opencode | `glm` (or `kimi`) | no for standard raw slugs; **yes** for `free`/`-free` (never critical) |
+| opencode | `glm` (or `kimi`, or an allowlisted large slug) | **yes**: free, standard, unknown and unrecorded (resumed) models are refused even with `--allow-small` |
 
 \* cursor: `--allow-small` still overrides the refusal and lets the run proceed — it has no large
-tier to promote to. OpenCode `free`/`-free` models are never critical-capable: `--critical` is refused
-even with `--allow-small`. `run auto`/`handoff` use `glm` for critical OpenCode work.
+tier to promote to. OpenCode critical work (`--critical`/guard path) runs only when the effective class is
+`large`: a `free`, standard, unknown slug, or a resumed session with no recorded model is refused even with
+`--allow-small` (on resume, pin `--tier glm|kimi`). `run auto`/`handoff` use `glm` for critical OpenCode work.
+
+**OpenCode large slugs are an explicit allowlist** (`OPENCODE_LARGE_MODELS` in `lib/models.js`):
+`opencode-go/glm-5.3`, `opencode-go/glm-5.2`, `opencode-go/kimi-k3`, `opencode-go/kimi-k2.7-code`
+(verified against `opencode models` 2026-10-15). Any other raw slug is standard (`*-free` is small): no
+`--yolo`, no `--critical`. A new frontier OpenCode model is NOT picked up by name pattern; add its slug
+to the list by hand (plus docs/tests).
+
+**Class comes from the tier/model only for claude and opencode.** `--effort` does not change the class of
+a claude tier or an opencode model (it is passed through as `--effort` / `--variant`); only Codex
+`gpt-6.1-sol` is effort-driven (low small, medium standard, high large). So `claude sonnet --effort high`
+is still standard, and `opencode free --effort high` is still small.
 
 ### Full access gate (`--yolo`)
 
 `--yolo` on **codex**, **claude** and **opencode** runs only on a frontier (class `large`) model/effort:
-codex `sol-high`, `sol --effort high`, `astra`; claude `opus`; opencode `glm`, `kimi` (and raw
-`opencode-go/glm-*`/`kimi-*` slugs). Everything else (codex `sol`/`sol-low` below effort high, claude `sonnet`,
+codex `sol-high`, `sol --effort high`, `astra`; claude `opus`; opencode `glm`, `kimi` (and the
+allowlisted large raw slugs, see below). Everything else (codex `sol`/`sol-low` below effort high, claude `sonnet`,
 opencode `free`/unknown slugs) is refused with an error naming the eligible tiers, on `run`, `resume`,
 `handoff` and `run auto` (auto skips ineligible candidates with `AUTO: <vendor> skipped — <reason>`).
-Codex maps it to `-s danger-full-access` (never `--dangerously-bypass-approvals-and-sandbox`); `--ro --yolo`
-is refused. agy/grok/cursor are not gated. Every full-access launch prints
+Codex maps it to `-s danger-full-access` on `run` and `-c sandbox_mode=danger-full-access` on `resume`
+(never `--dangerously-bypass-approvals-and-sandbox`); `--ro --yolo` is refused. Elevated `astra` needs
+`--critical` on EVERY launch, including resuming a recorded astra thread. An opencode `--yolo` resume whose
+model is unrecorded/unknown is refused. The `ELEVATED:` line's `mode=` shows the real flag for that path. agy/grok/cursor are not gated. Every full-access launch prints
 `ELEVATED: vendor=… tier=… model=… effort=… mode=…` and records `elevated: true` in `meta.json`.
 The CLI cannot verify user approval: the main agent must ask the user before EVERY `--yolo` launch
 (one approval = one launch, no standing grant) and call out risky actions (prod hosts, live price pushes,

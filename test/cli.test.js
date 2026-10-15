@@ -40,3 +40,9 @@ test('m6: the help text documents that --tier wins over --model when both are gi
   const { HELP } = require('../bin/cli');
   assert.match(HELP, /--tier wins/);
 });
+
+test('status --all is a recognised boolean flag and documented in the help', () => {
+  const { HELP, parseOptions } = require('../bin/cli');
+  assert.equal(parseOptions(['--all']).options.all, true);
+  assert.match(HELP, /status \[--all\]/);
+});

@@ -21,7 +21,8 @@ Critical work (`--critical`): only `opus` allowed.
 `--effort E` selects reasoning effort. Nothing else is selectable: `haiku`, the old
 `claude-sonnet-5`/`claude-opus-5` slugs, and any other raw slug are rejected with an error listing
 the allowed tiers (only `claude-sonnet-5-5`/`claude-opus-5-5` pass as raw slugs). Each run logs
-`SELECT: vendor=claude tier=… model=… effort=… why=…`.
+`SELECT: vendor=claude tier=… model=… effort=… why=…`. The size class comes from the tier only: `--effort`
+never changes it (`sonnet --effort high` is still standard: no `--critical`, no `--yolo`).
 
 ### Strengths — route by domain
 

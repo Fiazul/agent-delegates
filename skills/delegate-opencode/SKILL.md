@@ -20,10 +20,15 @@ NEVER critical: refused even with `--allow-small`.
 | `glm` | opencode-go/glm-5.3 | large | frontier: hard / critical work (the critical tier for `run auto`/`handoff`) |
 | `kimi` | opencode-go/kimi-k3 | large | frontier: hard / critical work, strong 2D/3D/visual design |
 
-`glm` and `kimi` are frontier models. Raw `provider/model` slugs from `opencode models` also work
-and are classed by name: any `*-free` slug is small; `opencode-go/glm-*` / `opencode-go/kimi-*` are
-large (`-flash` variants excepted: standard); every other slug is standard (never large, so never
-critical without `--allow-small` and never `--yolo`).
+`glm` and `kimi` are frontier models. Raw `provider/model` slugs from `opencode models` also work.
+Their class: any `*-free` slug is small; ONLY these four are large (explicit allowlist,
+`OPENCODE_LARGE_MODELS` in `lib/models.js`): `opencode-go/glm-5.3`, `opencode-go/glm-5.2`,
+`opencode-go/kimi-k3`, `opencode-go/kimi-k2.7-code`; every other slug is standard (never large: no
+`--critical`, no `--yolo`, and `--allow-small` does not unlock critical on OpenCode).
+**New frontier models must be added to that list by hand** (a name pattern like `glm-*` is deliberately not
+used, so a lightweight or experimental variant can never be promoted silently). The class comes from the
+tier/model only; `--effort` (`--variant`) never changes it. A resumed session with no recorded model is
+unknown, hence refused for `--critical`/`--yolo` unless you pin `--tier glm|kimi`.
 
 ### Strengths — route by domain
 
@@ -64,7 +69,7 @@ denied). Scope briefs carefully when using `--yolo`.
 ## Full access (`--yolo`) — frontier tiers only
 
 `--yolo` gives the OpenCode worker FULL access (`--auto`). It is allowed ONLY on a frontier
-model/effort: `glm` and `kimi` (and raw `opencode-go/glm-*`/`kimi-*` slugs); `free`/`-free`/unknown slugs are refused. Anything else is refused by the CLI with an error naming the eligible
+model/effort: `glm` and `kimi` (and the four allowlisted large raw slugs above); `free`/`-free`/standard/unknown slugs are refused. Anything else is refused by the CLI with an error naming the eligible
 tiers (on `run`, `resume`, `handoff`, and `run auto`; in `run auto` an ineligible candidate is skipped with
 `AUTO: <vendor> skipped — <reason>`).
 

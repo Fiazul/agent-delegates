@@ -57,13 +57,13 @@ Resume reuses the recorded model and effort; `--tier` wins over `--model` (both 
 a recorded model that is no longer allowed is remapped to the same size class (luna → `sol-low`,
 terra → `sol`, old sol/astra → `sol-high`) with a logged line; a critical resume on a non-large
 effective model is refused (pin `--tier sol-high` or `--effort high`), and no record pins `gpt-6.1-sol` with a warning (never Codex's own default). It pins model with `-c model=<slug>`,
-sandbox with `-c sandbox_mode=` plus `--ignore-user-config` (except `--full`),
+sandbox with `-c sandbox_mode=` ALWAYS (also under `--full`; `--full` only drops `--ignore-user-config` and the clean-room flags),
 and passes `--effort`; resume warns that Codex does not support `--add-dir`.
 
 ## Full access (`--yolo`) — frontier tiers only
 
 `--yolo` gives the Codex worker FULL access (`sandbox_mode=danger-full-access`; never `--dangerously-bypass-approvals-and-sandbox`). It is allowed ONLY on a frontier
-model/effort: `sol-high`, `sol --effort high`, `astra` (astra also needs `--critical`); `sol-low` and `sol` below effort high are refused. Anything else is refused by the CLI with an error naming the eligible
+model/effort: `sol-high`, `sol --effort high`, `astra` (astra also needs `--critical` on EVERY launch, resume of a recorded astra thread included); `sol-low` and `sol` below effort high are refused. Anything else is refused by the CLI with an error naming the eligible
 tiers (on `run`, `resume`, `handoff`, and `run auto`; in `run auto` an ineligible candidate is skipped with
 `AUTO: <vendor> skipped — <reason>`).
 

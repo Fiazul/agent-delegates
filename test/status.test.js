@@ -5,7 +5,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { fetchCursorUsage, formatCursorQuota } = require('../lib/status');
+const { ROW_VENDORS, fetchCursorUsage, formatCursorQuota, rowVendorIds } = require('../lib/status');
 
 test('formatCursorQuota: success shape formats included/auto/api left + resets date', () => {
   const data = {
@@ -44,4 +44,19 @@ test('fetchCursorUsage: passes bearer token and the Connect JSON endpoint to the
 test('fetchCursorUsage: HTTP failure from the fetcher propagates (caller falls back to today\'s wording)', async () => {
   const fetcher = async () => { throw new Error('HTTP 401'); };
   await assert.rejects(() => fetchCursorUsage('tok-123', fetcher), /HTTP 401/);
+});
+
+// Status rows: claude (main) + vendors in routing.json priority; agy/grok/cursor hidden unless configured; --all shows every row.
+test('rowVendorIds: claude + configured priority only; agy/grok/cursor hidden unless installed; all shows every vendor', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { configPath } = require('../lib/policy');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-status-'));
+  assert.deepEqual(rowVendorIds(home), ['claude', 'codex', 'opencode'], 'defaults: codex, opencode, claude');
+  fs.mkdirSync(path.dirname(configPath(home)), { recursive: true });
+  fs.writeFileSync(configPath(home), JSON.stringify({ priority: ['codex', 'Antigravity'] }));
+  assert.deepEqual(rowVendorIds(home), ['claude', 'codex', 'agy'], 'a configured delegate shows (names normalized), unconfigured opencode hidden');
+  assert.deepEqual(rowVendorIds(home, { all: true }), [...ROW_VENDORS]);
+  assert.deepEqual(ROW_VENDORS, ['claude', 'codex', 'agy', 'grok', 'cursor', 'opencode']);
 });

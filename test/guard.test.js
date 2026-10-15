@@ -164,17 +164,21 @@ test('enforce: opencode free is NEVER critical (even with allowSmall); glm/kimi 
   assert.equal(freeRefused.ok, false);
   const freeOverride = enforce({ vendor: 'opencode', tier: 'free', model: 'opencode/mimo-v2.6-flash-free', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'run' });
   assert.equal(freeOverride.ok, false, '--allow-small must not unlock opencode free on critical work');
-  assert.match(freeOverride.message, /never runs on OpenCode free models/);
+  assert.match(freeOverride.message, /free\/small model; critical work on OpenCode requires a large model/);
+  assert.match(freeOverride.message, /--allow-small does not override this/);
+  assert.doesNotMatch(freeOverride.message, /glm \(glm\)/);
   // a raw -free slug is classed small, so it is refused the same way
   const rawFree = enforce({ vendor: 'opencode', tier: 'opencode/nemotron-3-ultra-free', model: 'opencode/nemotron-3-ultra-free', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'run' });
   assert.equal(rawFree.ok, false);
   for (const tier of ['glm', 'kimi']) {
     assert.equal(enforce({ vendor: 'opencode', tier, model: TIER_MAPS.opencode[tier], critical: true, reasons: ['x'], options: {}, mode: 'run' }).ok, true, tier);
   }
-  // other unknown raw slugs are standard: refused on critical, allowed only with allowSmall
+  // other unknown raw slugs are standard: refused on critical, and --allow-small does NOT unlock them (F4)
   const std = { vendor: 'opencode', tier: 'opencode/other', model: 'opencode/other', critical: true, reasons: ['x'] , mode: 'run' };
   assert.equal(enforce({ ...std, options: {} }).ok, false);
-  assert.equal(enforce({ ...std, options: { allowSmall: true } }).ok, true);
+  const stdOverride = enforce({ ...std, options: { allowSmall: true } });
+  assert.equal(stdOverride.ok, false, '--allow-small must not unlock a standard opencode model on critical work');
+  assert.match(stdOverride.message, /a standard model; critical work on OpenCode requires a large model/);
 
   const cursorRefused = enforce({ vendor: 'cursor', tier: 'composer', model: 'composer-2.5', critical: true, reasons: ['x'], options: {}, mode: 'run' });
   assert.equal(cursorRefused.ok, false);
@@ -366,4 +370,35 @@ test('enforce: astra is refused unless critical; allowed on critical; resume con
   assert.equal(enforce({ ...run, critical: true }).ok, true);
   assert.equal(enforce({ ...run, critical: false, mode: 'resume' }).ok, true);
   assert.equal(enforce({ ...run, critical: false, mode: 'resume', options: { tier: 'astra' } }).ok, false);
+});
+
+test('F2 enforce: elevated astra needs --critical on run AND on resume of a recorded astra thread; plain recorded-astra resume still passes', () => {
+  const base = { vendor: 'codex', tier: '', model: 'gpt-6-astra', effort: 'high', reasons: [] };
+  const resumeYolo = enforce({ ...base, mode: 'resume', options: { yolo: true } });
+  assert.equal(resumeYolo.ok, false);
+  assert.match(resumeYolo.message, /astra .* reserved for critical/);
+  const resumeYoloCritical = enforce({ ...base, mode: 'resume', critical: true, reasons: ['x'], options: { yolo: true } });
+  assert.equal(resumeYoloCritical.ok, true);
+  assert.equal(resumeYoloCritical.elevated, true);
+  assert.equal(enforce({ ...base, mode: 'resume', options: {} }).ok, true, 'plain resume of a recorded astra thread is let through');
+  assert.equal(enforce({ ...base, tier: 'astra', mode: 'run', options: { yolo: true } }).ok, false);
+});
+
+test('F4 enforce: opencode --critical needs a LARGE class (unknown/standard/small refused, --allow-small never overrides); resume hints how to pin', () => {
+  const crit = { vendor: 'opencode', critical: true, reasons: ['x'] };
+  for (const [tier, model] of [['', ''], ['', 'opencode-go/glm-5.3-flash'], ['', 'opencode-go/glm-9'], ['free', 'opencode/mimo-v2.6-flash-free']]) {
+    for (const allowSmall of [false, true]) {
+      const verdict = enforce({ ...crit, tier, model, mode: 'resume', options: { allowSmall } });
+      assert.equal(verdict.ok, false, `${tier}|${model}|allowSmall=${allowSmall}`);
+      assert.match(verdict.message, /On resume, pin it with --tier glm\|kimi/);
+    }
+  }
+  assert.equal(enforce({ ...crit, tier: '', model: 'opencode-go/kimi-k2.7-code', mode: 'resume', options: {} }).ok, true);
+  assert.equal(enforce({ ...crit, tier: 'glm', model: 'opencode-go/glm-5.3', mode: 'run', options: {} }).ok, true);
+});
+
+test('refusal messages never duplicate a label (e.g. "glm (glm)")', () => {
+  const verdict = enforce({ vendor: 'opencode', tier: 'free', model: 'opencode/mimo-v2.6-flash-free', critical: true, reasons: ['x'], options: {}, mode: 'run' });
+  assert.match(verdict.message, /tier glm = opencode-go\/glm-5\.3, tier kimi = opencode-go\/kimi-k3/);
+  assert.doesNotMatch(verdict.message, /\b(\w+) \(\1\)/);
 });

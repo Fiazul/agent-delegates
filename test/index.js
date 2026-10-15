@@ -16,3 +16,4 @@ require('./handoff.test');
 require('./status.test');
 require('./cli.test');
 require('./skills.test');
+require('./yolo.test');

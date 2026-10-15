@@ -11,7 +11,7 @@ const HELP = `agent-delegates — visible, reusable CLI-agent workers
 
 Usage:
   agent-delegates install [--main claude|codex|cursor|opencode|all (or a comma list, e.g. claude,codex)] [--delegates v1,v2,...] [--no-statusline] [--no-hook] [--yes] [--skip-cli-install] [--uninstall]
-  agent-delegates status [--probe-grok]
+  agent-delegates status [--all] [--probe-grok]
   agent-delegates route-check [--json] [--self claude] [--probe]
   agent-delegates pick [--critical] [--json] [--probe] [--self claude|codex|opencode|...]
   agent-delegates run <vendor> <tier|model> <brief-file|-> [options]
@@ -51,6 +51,7 @@ Run options:
   --no-hook      skip installing the UserPromptSubmit routing-nudge hook (installed by default)
   --no-path      install: don't offer to add the shim directory to PATH on win32 (print the instruction instead)
   --statusline/--hook  accepted for compatibility; both are already on by default (no-ops)
+  --all          status: show every vendor row (default: claude + vendors in routing.json priority)
   --json         route-check: print one JSON line instead of a human line
   --self VENDOR  route-check/pick/run auto: the main agent's own vendor, never suggested as a delegate (the pace verdict itself is still Claude-quota based)
   --probe        route-check/pick/run auto: force a fresh vendor-status probe instead of the cached rows
@@ -70,7 +71,7 @@ function die(message) {
 function parseOptions(args) {
   const options = { addDir: [] };
   const positional = [];
-  const boolean = new Set(['--ro', '--full', '--safe', '--yolo', '--statusline', '--hook', '--no-statusline', '--no-hook', '--no-path', '--uninstall', '--probe-grok', '--yes', '--skip-cli-install', '--json', '--critical', '--allow-small', '--no-preflight', '--probe', '--no-login']);
+  const boolean = new Set(['--ro', '--full', '--safe', '--yolo', '--statusline', '--hook', '--no-statusline', '--no-hook', '--no-path', '--uninstall', '--probe-grok', '--all', '--yes', '--skip-cli-install', '--json', '--critical', '--allow-small', '--no-preflight', '--probe', '--no-login']);
   const values = new Map([['--cd', 'cd'], ['--name', 'name'], ['--effort', 'effort'], ['--add-dir', 'addDir'], ['--priority', 'priority'], ['--max-hops', 'maxHops'], ['--self', 'self'], ['--timeout', 'timeout'], ['--main', 'main'], ['--delegates', 'delegates'], ['--aliases', 'aliases'], ['--resolve-agent-conflict', 'resolveAgentConflict'], ['--tier', 'tier'], ['--model', 'model']]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -105,7 +106,7 @@ async function main(argv = process.argv.slice(2), dependencies = {}) {
     if (command === 'status') {
       const { options, positional } = parseOptions(argv);
       if (positional.length) return die('status takes no positional arguments');
-      return console.log(await status({ probeGrok: options.probeGrok }));
+      return console.log(await status({ probeGrok: options.probeGrok, all: options.all }));
     }
     if (command === 'route-check') {
       const { options, positional } = parseOptions(argv);

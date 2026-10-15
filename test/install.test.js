@@ -726,6 +726,7 @@ test('installHook: copies a self-contained impl + lib/ closure into ~/.claude/ag
   assert.equal(fs.existsSync(implCopy), true);
   assert.equal(fs.existsSync(path.join(nudgeDir, 'lib', 'util.js')), true);
   assert.equal(fs.existsSync(path.join(nudgeDir, 'lib', 'policy.js')), true);
+  assert.equal(fs.existsSync(path.join(nudgeDir, 'lib', 'models.js')), true);
   const stub = fs.readFileSync(path.join(fakeHome, '.claude', 'agent-delegates-nudge.js'), 'utf8');
   assert.match(stub, new RegExp(implCopy.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
@@ -1481,7 +1482,43 @@ test('uninstall still sweeps the full skill list (including delegates deselected
   // simulate a stale link from an older install that had every skill
   fs.symlinkSync(path.join(pkgDir(fakeHome), 'skills', 'delegate-grok'), path.join(fakeHome, '.claude', 'skills', 'delegate-grok'), 'dir');
   await install({ home: fakeHome, uninstall: true, log() {} });
-  assert.deepEqual(fs.readdirSync(path.join(fakeHome, '.claude', 'skills')), []);
+  // F11: every managed link is gone and the now-empty skills dir install created is removed too
+  assert.equal(fs.existsSync(path.join(fakeHome, '.claude', 'skills')), false);
+});
+
+test('uninstall (F11): removes an emptied skills dir but NEVER a non-empty one (a user skill or foreign symlink keeps it)', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  await install({ home: fakeHome, main: 'claude,codex', delegates: 'codex,claude', skipCliInstall: true, commandExists: () => true, env: {}, log() {} });
+  const claudeRoot = path.join(fakeHome, '.claude', 'skills');
+  const codexRoot = path.join(fakeHome, '.codex', 'skills');
+  fs.mkdirSync(path.join(codexRoot, 'my-own-skill'));
+  fs.writeFileSync(path.join(codexRoot, 'my-own-skill', 'SKILL.md'), 'mine\n');
+  const log = [];
+  await install({ home: fakeHome, uninstall: true, log: l => log.push(l) });
+  assert.equal(fs.existsSync(claudeRoot), false, 'emptied dir removed');
+  assert.equal(fs.existsSync(path.join(codexRoot, 'my-own-skill', 'SKILL.md')), true, 'non-empty dir and its contents survive');
+  assert.deepEqual(fs.readdirSync(codexRoot), ['my-own-skill']);
+  assert.ok(log.some(l => l === `removed empty dir ${claudeRoot}`), JSON.stringify(log));
+  assert.equal(log.some(l => l === `removed empty dir ${codexRoot}`), false);
+});
+
+test('install (F7): a FOREIGN symlink at a target skill path is backed up like a real dir, not unlinked silently; our own link is relinked', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  const root = path.join(fakeHome, '.claude', 'skills');
+  fs.mkdirSync(root, { recursive: true });
+  const foreign = fs.mkdtempSync(path.join(os.tmpdir(), 'foreign-skill-'));
+  fs.writeFileSync(path.join(foreign, 'SKILL.md'), 'foreign\n');
+  fs.symlinkSync(foreign, path.join(root, 'delegates'), 'dir');
+  const log = [];
+  await install({ home: fakeHome, main: 'claude', delegates: 'codex', skipCliInstall: true, commandExists: () => true, env: {}, log: l => log.push(l) });
+  const backups = fs.readdirSync(root).filter(n => n.startsWith('delegates.bak-'));
+  assert.equal(backups.length, 1, JSON.stringify(fs.readdirSync(root)));
+  assert.equal(fs.readlinkSync(path.join(root, backups[0])), foreign, 'foreign symlink preserved intact under the backup name');
+  assert.ok(log.some(l => l.startsWith('backed up ') && /delegates\.bak-/.test(l)), JSON.stringify(log));
+  assert.ok(fs.readlinkSync(path.join(root, 'delegates')).startsWith(pkgDir(fakeHome)), 'now linked to our pkg copy');
+  // re-install: our own managed link is relinked in place, no new backup
+  await install({ home: fakeHome, main: 'claude', delegates: 'codex', skipCliInstall: true, commandExists: () => true, env: {}, log() {} });
+  assert.equal(fs.readdirSync(root).filter(n => n.startsWith('delegates.bak-')).length, 1);
 });
 
 test('install --main claude,codex: each dir gets delegates + selected delegates minus its own vendor; hooks only for claude', async () => {
@@ -1538,5 +1575,14 @@ test('install --main opencode: links ~/.config/opencode/skills (delegates + dele
   assert.deepEqual(fs.readdirSync(path.join(xdg, 'opencode', 'skills')).sort(), ['delegate-claude', 'delegate-codex', 'delegates']);
   // uninstall sweeps it
   await install({ home: home2, uninstall: true, env: { XDG_CONFIG_HOME: xdg }, log() {} });
-  assert.deepEqual(fs.readdirSync(path.join(xdg, 'opencode', 'skills')), []);
+  assert.equal(fs.existsSync(path.join(xdg, 'opencode', 'skills')), false, 'F11: emptied opencode skills dir removed');
+  assert.equal(fs.existsSync(path.join(xdg, 'opencode')), true, 'parent config dir left alone');
+});
+
+test('F8 sibling: --delegates normalizes names like --self/priority (Antigravity, CODEX -> agy, codex), deduped', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  await install({ home: fakeHome, main: 'claude', delegates: ' Antigravity , CODEX,codex', skipCliInstall: true, commandExists: () => true, env: {}, log() {} });
+  assert.deepEqual(fs.readdirSync(path.join(fakeHome, '.claude', 'skills')).sort(), ['delegate-antigravity', 'delegate-codex', 'delegates']);
+  const { configPath } = require('../lib/policy');
+  assert.deepEqual(JSON.parse(fs.readFileSync(configPath(fakeHome), 'utf8')).priority, ['agy', 'codex']);
 });

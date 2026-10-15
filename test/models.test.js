@@ -155,3 +155,10 @@ test('model policy: effectiveClass uses the effective effort for codex sol (larg
   assert.equal(effectiveClass('codex', 'astra', 'high'), 'large');
   assert.equal(effectiveClass('claude', 'opus', 'low'), 'large');
 });
+
+test('canonicalVendor: one normalizer (trim, lowercase, antigravity -> agy); non-strings pass through', () => {
+  assert.equal(canonicalVendor('Antigravity'), 'agy');
+  assert.equal(canonicalVendor('  CODEX '), 'codex');
+  assert.equal(canonicalVendor('agy'), 'agy');
+  assert.equal(canonicalVendor(undefined), undefined);
+});

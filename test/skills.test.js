@@ -44,3 +44,17 @@ test('delegate-codex/claude/opencode share the same domain-routing block and the
   assert.match(oc, /use ONLY when the user names OpenCode or for simple tasks/);
   assert.match(oc, /`glm` and `kimi` are frontier models/);
 });
+
+test('docs (F6/F10): README + opencode/claude skills document the explicit large-slug allowlist and that effort never changes the class', () => {
+  const readme = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
+  const oc = fs.readFileSync(path.join(repoRoot, 'skills', 'delegate-opencode', 'SKILL.md'), 'utf8');
+  const cl = fs.readFileSync(path.join(repoRoot, 'skills', 'delegate-claude', 'SKILL.md'), 'utf8');
+  for (const text of [readme, oc]) {
+    for (const slug of ['opencode-go/glm-5.3', 'opencode-go/glm-5.2', 'opencode-go/kimi-k3', 'opencode-go/kimi-k2.7-code']) assert.ok(text.includes(slug), slug);
+    assert.match(text, /added to (that|the) list by hand|add its slug\s+to the list by hand/i);
+  }
+  assert.match(readme, /Class comes from the tier\/model only for claude and opencode/);
+  assert.match(oc, /`--effort` \(`--variant`\) never changes it/);
+  assert.match(cl, /`--effort`\s+never changes it/);
+  for (const text of [readme, oc]) assert.doesNotMatch(text, /opencode-go\/glm-\*/);
+});

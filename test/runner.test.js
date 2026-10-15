@@ -662,8 +662,16 @@ test('R7: codex resume pins the same sandbox_mode the run branch would use, plus
   assert.ok(roJob.args.includes('sandbox_mode=read-only'), JSON.stringify(roJob.args));
 
   const { job: fullJob } = buildJob('codex', 'codex', 'resume', '', 'thread-1', 'follow-up', out, { cd: dir, full: true });
-  assert.ok(!fullJob.args.some(a => String(a).startsWith('sandbox_mode=')), JSON.stringify(fullJob.args));
+  // F1: --full only drops the clean-room flags; the sandbox is STILL pinned so user config cannot widen it
+  assert.ok(fullJob.args.includes('sandbox_mode=workspace-write'), JSON.stringify(fullJob.args));
   assert.ok(!fullJob.args.includes('--ignore-user-config'), JSON.stringify(fullJob.args));
+  assert.ok(!fullJob.args.includes('--disable'), JSON.stringify(fullJob.args));
+  const { job: fullRo } = buildJob('codex', 'codex', 'resume', '', 'thread-1', 'follow-up', out, { cd: dir, full: true, ro: true });
+  assert.ok(fullRo.args.includes('sandbox_mode=read-only'), JSON.stringify(fullRo.args));
+  const { job: fullYolo } = buildJob('codex', 'codex', 'resume', '', 'thread-1', 'follow-up', out, { cd: dir, full: true, yolo: true });
+  assert.ok(fullYolo.args.includes('sandbox_mode=danger-full-access'), JSON.stringify(fullYolo.args));
+  // exactly one sandbox_mode pin on every path
+  for (const j of [writeJob, roJob, fullJob, fullRo, fullYolo]) assert.equal(j.args.filter(a => String(a).startsWith('sandbox_mode=')).length, 1, JSON.stringify(j.args));
 });
 
 // m5: `codex exec resume --help` (live-checked 2026-09-18) has no `--add-dir` flag at all —
