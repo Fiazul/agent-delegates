@@ -27,7 +27,7 @@ Run options:
   --cd DIR       working directory
   --name N       reusable window name
   --ro           Codex read-only sandbox
-  --effort E     reasoning effort (codex tiers imply one: sol-low=low, sol=medium, sol-high/astra=high)
+  --effort E     reasoning effort (codex: low|medium|high only; tiers imply one: sol-low=low, sol=medium, sol-high/astra=high; astra must be high)
   --add-dir D    extra working directory (repeatable)
   --tier T       resume: pin this tier's model instead of the one the prior job recorded (if both --tier and --model are given, --tier wins); not valid on run — pass the model as the positional <tier|model> argument instead
   --model M      resume: pin this raw model slug instead of the one the prior job recorded (if both --tier and --model are given, --tier wins); not valid on run — pass the model as the positional <tier|model> argument instead

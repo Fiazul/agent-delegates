@@ -19,7 +19,7 @@ The list below is history of what was checked and why. New items go in a fresh s
 # History (state as of 2026-09-13 13:10, pushed unreviewed at the user's request)
 
 Branch `node-cli` = master now. Node port done by a Codex `sol` worker, docs by an Antigravity Opus worker;
-Linux smoke passed (agy run/resume/close, claude haiku run). **No review pass completed** — every vendor
+Linux smoke passed (agy run/resume/close, claude run on the then-current `haiku` tier [historical: `haiku` is no longer an allowed tier]). **No review pass completed** — every vendor
 ran out of quota mid-review. Open items, in priority order:
 
 1. ~~**Review the Node port**~~ **DONE (2026-09-17).** Opus review done; blocker+highs fixed on
@@ -45,7 +45,7 @@ ran out of quota mid-review. Open items, in priority order:
    `text`/`step_finish reason:'stop'`, grok a later non-empty result) — `turn.failed` is the one
    codex signal that stays unconditionally fatal regardless of what precedes or follows it.
 3. **Codex smoke of the Node CLI not run** (Codex 5h window was exhausted). Run:
-   `DELEGATE_OUT=/tmp/x node bin/cli.js run codex luna brief.md --cd /tmp/x --effort low`, then `resume`, then `close`.
+   `DELEGATE_OUT=/tmp/x node bin/cli.js run codex sol-low brief.md --cd /tmp/x`, then `resume`, then `close` (historical note: this item was written when the tier was `luna`; `luna`/`terra`/`haiku` are no longer selectable and are rejected).
 4. **macOS / Windows paths untested** (Terminal.app via osascript; `wt.exe` / `cmd /k`; junction→copy fallback).
 5. Renderer: confirm claude stream-json tool_use/tool_result rendering on a real run with tools.
 6. Quota lesson to keep in docs: Antigravity's Claude/GPT weekly bucket is ~2 Opus-sized jobs; Gemini flash
@@ -140,7 +140,7 @@ Findings from the same review pass as item 1 above, deferred rather than fixed o
   resume --help`, confirmed no `-m`/`--add-dir`, has generic `-c`) and opencode (`opencode run
   --help`, confirmed `--variant`, `-m`, `-s/--session`) as part of this review-fixes pass. agy,
   grok, and cursor's resume-model flag behavior is still unverified against their real `--help`
-  output/live runs — pending. claude verified live 2026-09-18: haiku run → resume pinned haiku, meta.model recorded.
+  output/live runs — pending. claude verified live 2026-09-18: [historical: tier `haiku` no longer allowed] haiku run → resume pinned haiku, meta.model recorded.
 - m4 (deferred): spawn lock never refreshed while held; stale-clear path can unlink a fresh lock
   after a crash (lib/console.js acquireSpawnLock). Narrow, post-crash only.
 - Codex skill-link target fixed 2026-09-18: `install --main codex` used to link into
@@ -153,10 +153,10 @@ Findings from the same review pass as item 1 above, deferred rather than fixed o
 
 ## Codex resume model drift (fixed 2026-09-18, residual note)
 - Before the fix, `resume` passed no model to any vendor; Codex fell back to `gpt-6-astra`, so
-  resumed luna/terra threads ran on the top tier. Now `resolveResumeModel()` in `lib/runner.js`
+  resumed luna/terra threads [historical tiers, no longer selectable; now remapped luna→sol-low, terra→sol] ran on the top tier. Now `resolveResumeModel()` in `lib/runner.js`
   reuses the recorded model (or `--tier`/`--model`) and Codex gets `-c model=<slug>`.
 - Residual: Codex prints an `item.completed` `type:"error"` "This session was recorded with model X
   but is resuming with Y" whenever a thread's last model differs. Informational, exit 0, not
   classified as failure. Threads that drifted before the fix will show it once per resume
-  (reversed: recorded astra, resuming luna). New threads don't. Nothing to patch unless we want
+  (reversed: recorded astra, resuming luna [historical tier]). New threads don't. Nothing to patch unless we want
   to surface it as a one-line console note instead of the raw error item.

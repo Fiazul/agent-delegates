@@ -122,7 +122,7 @@ test('invoke() refuses critical work on a small/standard model before submitting
   try {
     await assert.rejects(
       () => invoke('run', 'codex', 'sol', briefFile, { cd: cwd, critical: true, noPreflight: true, guardConfig: { keywords: [], paths: [] } }),
-      /CRITICAL WORK.*codex sol is a standard model; critical work requires a large model/
+      /CRITICAL WORK.*codex sol \(effort medium\) is a standard model; critical work requires a large model/
     );
     assert.equal(fs.existsSync(outRoot), false, 'no output dir should be created when the guard refuses before the job runs');
   } finally {
@@ -792,7 +792,7 @@ test('resolveResumeModel: explicit --tier wins over any recorded prior model', (
   }
 });
 
-test('resolveResumeModel: recorded model no longer allowed -> remapped to the policy default (codex sol, claude sonnet-5-5)', () => {
+test('resolveResumeModel: recorded model no longer allowed -> remapped by size class (codex luna->sol-low, claude opus->opus-5-5, haiku->sonnet-5-5)', () => {
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-resume-model-remap-'));
   const saved = process.env.DELEGATE_OUT;
   process.env.DELEGATE_OUT = outRoot;
@@ -802,12 +802,13 @@ test('resolveResumeModel: recorded model no longer allowed -> remapped to the po
     writePriorJob(outRoot, 'c-3', { vendor: 'claude', idField: 'session_id', id: 'sess-2', model: 'claude-haiku-4-5-20251001', startedAt: '2026-01-01T00:00:00.000Z' });
     const codex = resolveResumeModel('codex', 'thread-1', {});
     assert.equal(codex.model, 'gpt-6.1-sol');
-    assert.equal(codex.tier, 'sol');
-    assert.equal(codex.effort, 'medium');
+    assert.equal(codex.tier, 'sol-low', 'luna (small) remaps to sol-low, preserving the size class');
+    assert.equal(codex.effort, 'low');
     assert.equal(codex.why, 'resume-remap');
     assert.equal(codex.from, 'gpt-5.6-luna');
     const claude = resolveResumeModel('claude', 'sess-1', {});
-    assert.equal(claude.model, 'claude-sonnet-5-5');
+    assert.equal(claude.model, 'claude-opus-5-5', 'opus-class stays opus-class');
+    assert.equal(claude.tier, 'opus');
     assert.equal(claude.why, 'resume-remap');
     assert.equal(resolveResumeModel('claude', 'sess-2', {}).model, 'claude-sonnet-5-5');
   } finally {
@@ -908,14 +909,15 @@ test('invoke(): codex resume reads the prior run\'s recorded model and pins it, 
     const invokedArgs = fs.readFileSync(argsFile, 'utf8');
     assert.match(invokedArgs, /model=gpt-6\.1-sol/, invokedArgs);
     assert.doesNotMatch(invokedArgs, /luna/, invokedArgs);
-    assert.match(invokedArgs, /model_reasoning_effort=medium/, invokedArgs);
-    assert.ok(logs.some(l => /^SELECT: vendor=codex tier=sol model=gpt-6\.1-sol effort=medium why=resume-remap \(recorded gpt-5\.6-luna is no longer allowed\)$/.test(l)), JSON.stringify(logs));
+    assert.match(invokedArgs, /model_reasoning_effort=low/, invokedArgs);
+    assert.ok(logs.some(l => /^SELECT: vendor=codex tier=sol-low model=gpt-6\.1-sol effort=low why=resume-remap \(recorded gpt-5\.6-luna → gpt-6\.1-sol\)$/.test(l)), JSON.stringify(logs));
     assert.ok(!errors.some(e => /no recorded model/.test(e)), 'must not warn when a prior model was found');
 
     const meta = JSON.parse(fs.readFileSync(path.join(result.outDir, 'meta.json'), 'utf8'));
     assert.equal(meta.model, 'gpt-6.1-sol', 'resumed job must record the remapped model so a chained resume keeps it');
-    assert.equal(meta.tier, 'sol');
-    assert.equal(meta.effort, 'medium');
+    assert.equal(meta.tier, 'sol-low');
+    assert.equal(meta.effort, 'low');
+    assert.equal(meta.tierClass, 'small');
     assert.notEqual(meta.tierClass, 'unknown', 'guard tierClass must resolve the model, not fall back to unknown');
   } finally {
     console.error = originalError;
@@ -1026,7 +1028,8 @@ test('invoke(): codex effort follows the tier (low/medium/high), explicit --effo
   const cases = [['sol-low', 'low', 'gpt-6.1-sol'], ['sol', 'medium', 'gpt-6.1-sol'], ['sol-high', 'high', 'gpt-6.1-sol'], ['astra', 'high', 'gpt-6-astra']];
   for (const [tier, effort, model] of cases) {
     logs.length = 0;
-    await invoke('run', 'codex', tier, briefFile, opts);
+    // astra is refused unless the run is critical (see the astra tests below)
+    await invoke('run', 'codex', tier, briefFile, tier === 'astra' ? { ...opts, critical: true } : opts);
     const args = fs.readFileSync(argsFile, 'utf8');
     assert.match(args, new RegExp(`-m ${model} `), args);
     assert.match(args, new RegExp(`model_reasoning_effort=${effort}\\b`), args);
@@ -1035,4 +1038,267 @@ test('invoke(): codex effort follows the tier (low/medium/high), explicit --effo
   await invoke('run', 'codex', 'sol', briefFile, { ...opts, effort: 'high', why: 'auto-default' });
   assert.match(fs.readFileSync(argsFile, 'utf8'), /model_reasoning_effort=high\b/);
   assert.ok(logs.some(l => l === 'SELECT: vendor=codex tier=sol model=gpt-6.1-sol effort=high why=auto-default'));
+}));
+
+// --- effort allowlist, effective-effort critical guard, astra gate, class-preserving resume remap (2026-10) ---
+// Fake codex + claude binaries record the REAL spawned argv, so every assertion below is on what would
+// actually execute, not on an intermediate resolution result.
+function withFakeVendors(fn) {
+  return async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-vendors-'));
+    const bin = path.join(dir, 'bin');
+    fs.mkdirSync(bin);
+    const codex = path.join(bin, 'codex');
+    fs.writeFileSync(codex, '#!/bin/bash\necho "$@" > "$DELEGATE_TEST_ARGS_FILE"\nif [ -n "$DELEGATE_TEST_CODEX_FAIL" ]; then echo \'{"type":"turn.failed","error":{"message":"You\\u0027ve hit your usage limit. Try again in 3 hours."}}\'; exit 1; fi\necho \'{"type":"turn.completed","thread_id":"thread-9","usage":{}}\'\nexit 0\n');
+    const claude = path.join(bin, 'claude');
+    fs.writeFileSync(claude, '#!/bin/bash\necho "$@" > "$DELEGATE_TEST_CLAUDE_ARGS_FILE"\necho \'{"type":"result","result":"OK","session_id":"sess-9","usage":{}}\'\nexit 0\n');
+    fs.chmodSync(codex, 0o755);
+    fs.chmodSync(claude, 0o755);
+    const cwd = path.join(dir, 'cwd');
+    fs.mkdirSync(cwd);
+    const briefFile = path.join(dir, 'brief.md');
+    fs.writeFileSync(briefFile, 'reply OK\n');
+    const scratchHome = path.join(dir, 'home');
+    fs.mkdirSync(scratchHome, { recursive: true });
+    const outRoot = path.join(dir, 'out');
+    const argsFile = path.join(dir, 'args.txt');
+    const claudeArgsFile = path.join(dir, 'claude-args.txt');
+    const env = {
+      HOME: scratchHome, PATH: `${bin}${path.delimiter}${process.env.PATH}`, DELEGATE_NO_WINDOW: '1',
+      DELEGATE_CONSOLE_DIR: path.join(dir, 'consoles'), DELEGATE_OUT: outRoot,
+      DELEGATE_TEST_ARGS_FILE: argsFile, DELEGATE_TEST_CLAUDE_ARGS_FILE: claudeArgsFile
+    };
+    const saved = {};
+    for (const key of [...Object.keys(env), 'DELEGATE_TEST_CODEX_FAIL']) saved[key] = process.env[key];
+    for (const key of Object.keys(env)) process.env[key] = env[key];
+    delete process.env.DELEGATE_TEST_CODEX_FAIL;
+    const logs = [];
+    const errors = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = (...args) => logs.push(args.join(' '));
+    console.error = (...args) => errors.push(args.join(' '));
+    try {
+      await fn({
+        dir, cwd, briefFile, outRoot, argsFile, claudeArgsFile, scratchHome, logs, errors,
+        opts: { cd: cwd, noPreflight: true, guardConfig: { keywords: [], paths: [] } },
+        spawned: () => fs.existsSync(argsFile),
+        codexArgs: () => fs.readFileSync(argsFile, 'utf8'),
+        reset: () => { for (const f of [argsFile, claudeArgsFile]) try { fs.unlinkSync(f); } catch {} logs.length = 0; errors.length = 0; },
+        select: () => logs.filter(l => l.startsWith('SELECT:'))
+      });
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+      for (const key of Object.keys(saved)) {
+        if (saved[key] == null) delete process.env[key]; else process.env[key] = saved[key];
+      }
+    }
+  };
+}
+
+test('F2: invoke(run) rejects any codex effort outside low|medium|high before preflight/output dir/spawn', withFakeVendors(async ({ briefFile, opts, outRoot, spawned }) => {
+  for (const bad of ['banana', 'xhigh', 'max', 'ultra']) {
+    await assert.rejects(() => invoke('run', 'codex', 'sol', briefFile, { ...opts, effort: bad }), /effort '.*' not allowed for codex: allowed efforts low\|medium\|high/, bad);
+  }
+  // rejected even with the preflight check enabled: selection fails first, preflight never runs
+  let preflightCalled = false;
+  await assert.rejects(() => invoke('run', 'codex', 'sol', briefFile, { ...opts, noPreflight: false, preflight: async () => { preflightCalled = true; return { ok: true }; }, effort: 'xhigh' }), /not allowed for codex/);
+  assert.equal(preflightCalled, false);
+  assert.equal(fs.existsSync(outRoot), false);
+  assert.equal(spawned(), false);
+}));
+
+test('F2: invoke(resume) rejects a bad codex effort (recorded model, --tier, and no-record paths) without spawning', withFakeVendors(async ({ briefFile, opts, outRoot, spawned }) => {
+  writePriorJob(outRoot, 'codex-20260101-000000-000', { vendor: 'codex', idField: 'thread_id', id: 'thread-1', model: 'gpt-6.1-sol', tier: 'sol', effort: 'medium', startedAt: '2026-01-01T00:00:00.000Z' });
+  const before = fs.readdirSync(outRoot);
+  for (const bad of ['banana', 'xhigh', 'ultra', 'max']) {
+    await assert.rejects(() => invoke('resume', 'codex', 'thread-1', briefFile, { ...opts, effort: bad }), /allowed efforts low\|medium\|high/, bad);
+    await assert.rejects(() => invoke('resume', 'codex', 'thread-1', briefFile, { ...opts, tier: 'sol', effort: bad }), /allowed efforts/, bad);
+    await assert.rejects(() => invoke('resume', 'codex', 'thread-unknown', briefFile, { ...opts, effort: bad }), /allowed efforts/, bad);
+  }
+  assert.deepEqual(fs.readdirSync(outRoot), before, 'no output dir written for a rejected resume');
+  assert.equal(spawned(), false);
+}));
+
+test('F2: handoff and run auto reject a bad codex effort (no spawn); handoff to codex with a valid effort spawns it', withFakeVendors(async ({ dir, briefFile, opts, cwd, spawned, codexArgs, logs }) => {
+  const { handoff } = require('../lib/handoff');
+  const { runAuto } = require('../lib/route');
+  const jobDir = path.join(dir, 'prior-job');
+  fs.mkdirSync(jobDir);
+  fs.writeFileSync(path.join(jobDir, 'brief.md'), 'original brief\n');
+  fs.writeFileSync(path.join(jobDir, 'last.md'), 'WORKER FAILED: quota exhausted\n');
+  fs.writeFileSync(path.join(jobDir, 'exit'), '1');
+  fs.writeFileSync(path.join(jobDir, 'meta.json'), JSON.stringify({ vendor: 'agy', model: 'gemini-3.8-flash-high', cwd }));
+  await assert.rejects(() => handoff(jobDir, 'codex', 'sol', { ...opts, effort: 'ultra' }), /effort 'ultra' not allowed for codex/);
+  assert.equal(spawned(), false);
+
+  const rows = [['codex', 'wk 40% · 5h 20%', '?']];
+  await assert.rejects(() => runAuto(briefFile, { ...opts, rows, priority: 'codex', effort: 'ultra', respectPolicy: false, home: path.join(dir, 'home') }, ''), /no vendor with quota; tried: codex/);
+  assert.ok(logs.some(l => /^AUTO: codex skipped — effort 'ultra' not allowed for codex/.test(l)), JSON.stringify(logs));
+  assert.equal(spawned(), false);
+
+  await handoff(jobDir, 'codex', 'sol', { ...opts, effort: 'high' });
+  assert.match(codexArgs(), /model_reasoning_effort=high\b/);
+}));
+
+test('F1: critical uses the EFFECTIVE codex effort (sol-high --effort low refused; sol --effort high allowed; same invocation as sol-high)', withFakeVendors(async ({ briefFile, opts, spawned, codexArgs, select, reset, outRoot }) => {
+  const crit = { ...opts, critical: true };
+  await assert.rejects(() => invoke('run', 'codex', 'sol-high', briefFile, { ...crit, effort: 'low' }), /CRITICAL WORK.*codex sol-high \(effort low\) is a small model/);
+  await assert.rejects(() => invoke('run', 'codex', 'sol-high', briefFile, { ...crit, effort: 'medium' }), /standard model/);
+  await assert.rejects(() => invoke('run', 'codex', 'sol', briefFile, crit), /codex sol \(effort medium\) is a standard model/);
+  assert.equal(spawned(), false);
+  assert.equal(fs.existsSync(outRoot), false);
+
+  await invoke('run', 'codex', 'sol', briefFile, { ...crit, effort: 'high' });
+  assert.match(codexArgs(), /-m gpt-6\.1-sol .*model_reasoning_effort=high\b/);
+  assert.deepEqual(select(), ['SELECT: vendor=codex tier=sol model=gpt-6.1-sol effort=high why=explicit']);
+  reset();
+  await invoke('run', 'codex', 'sol-high', briefFile, crit);
+  assert.match(codexArgs(), /model_reasoning_effort=high\b/);
+  reset();
+  // --allow-small overrides, with a warning that names the effective effort
+  await invoke('run', 'codex', 'sol-high', briefFile, { ...crit, effort: 'low', allowSmall: true });
+  assert.match(codexArgs(), /model_reasoning_effort=low\b/);
+}));
+
+test('F1: resume --critical refuses a small/standard effective model (and passes at effort high or with --allow-small)', withFakeVendors(async ({ briefFile, opts, outRoot, spawned, codexArgs, select, reset }) => {
+  writePriorJob(outRoot, 'codex-1', { vendor: 'codex', idField: 'thread_id', id: 'thread-1', model: 'gpt-6.1-sol', tier: 'sol-low', effort: 'low', startedAt: '2026-01-01T00:00:00.000Z' });
+  const crit = { ...opts, critical: true };
+  await assert.rejects(() => invoke('resume', 'codex', 'thread-1', briefFile, crit), /CRITICAL WORK.*codex gpt-6\.1-sol \(effort low\) is a small model.*On resume, pin it with --tier\/--model/s);
+  assert.equal(spawned(), false);
+  await invoke('resume', 'codex', 'thread-1', briefFile, { ...crit, effort: 'high' });
+  assert.match(codexArgs(), /model_reasoning_effort=high\b/);
+  reset();
+  await invoke('resume', 'codex', 'thread-1', briefFile, { ...crit, tier: 'sol-high' });
+  assert.match(codexArgs(), /model_reasoning_effort=high\b/);
+  assert.deepEqual(select(), ['SELECT: vendor=codex tier=sol-high model=gpt-6.1-sol effort=high why=explicit']);
+  reset();
+  await invoke('resume', 'codex', 'thread-1', briefFile, { ...crit, allowSmall: true });
+  assert.match(codexArgs(), /model_reasoning_effort=low\b/);
+  // a non-critical resume is never refused
+  reset();
+  await invoke('resume', 'codex', 'thread-1', briefFile, opts);
+  assert.match(codexArgs(), /model_reasoning_effort=low\b/);
+}));
+
+test('F1: run auto --critical with --effort low never spawns codex at low; default critical effort is high', withFakeVendors(async ({ dir, briefFile, opts, spawned, codexArgs, logs }) => {
+  const { runAuto } = require('../lib/route');
+  const rows = [['codex', 'wk 40% · 5h 20%', '?']];
+  const auto = { ...opts, rows, priority: 'codex', critical: true, respectPolicy: false, home: path.join(dir, 'home') };
+  await assert.rejects(() => runAuto(briefFile, { ...auto, effort: 'low' }, ''), /no vendor with quota/);
+  assert.ok(logs.some(l => /^AUTO: codex skipped — CRITICAL WORK.*codex sol-high \(effort low\) is a small model/.test(l)), JSON.stringify(logs));
+  assert.equal(spawned(), false);
+  logs.length = 0;
+  await runAuto(briefFile, auto, '');
+  assert.match(codexArgs(), /-m gpt-6\.1-sol .*model_reasoning_effort=high\b/);
+  assert.ok(logs.includes('SELECT: vendor=codex tier=sol-high model=gpt-6.1-sol effort=high why=auto-critical-default'), JSON.stringify(logs.filter(l => /SELECT/.test(l))));
+}));
+
+test('F3: astra is refused without --critical, refused at any effort but high, allowed (high) with --critical', withFakeVendors(async ({ briefFile, opts, spawned, codexArgs, outRoot, select }) => {
+  await assert.rejects(() => invoke('run', 'codex', 'astra', briefFile, opts), /astra.*critical 2D\/3D\/visual design work only.*--critical/);
+  await assert.rejects(() => invoke('run', 'codex', 'gpt-6-astra', briefFile, opts), /astra.*--critical/);
+  await assert.rejects(() => invoke('run', 'codex', 'astra', briefFile, { ...opts, critical: true, effort: 'low' }), /astra always runs at high effort/);
+  await assert.rejects(() => invoke('run', 'codex', 'astra', briefFile, { ...opts, critical: true, effort: 'medium' }), /astra always runs at high effort/);
+  assert.equal(spawned(), false);
+  assert.equal(fs.existsSync(outRoot), false);
+  await invoke('run', 'codex', 'astra', briefFile, { ...opts, critical: true });
+  assert.match(codexArgs(), /-m gpt-6-astra .*model_reasoning_effort=high\b/);
+  assert.deepEqual(select(), ['SELECT: vendor=codex tier=astra model=gpt-6-astra effort=high why=explicit']);
+}));
+
+test('F4: resume remap preserves size class end to end (codex luna->sol-low, terra->sol, sol/astra->sol-high; recorded allowed effort kept)', withFakeVendors(async ({ briefFile, opts, outRoot, codexArgs, select, reset }) => {
+  const cases = [
+    ['gpt-5.6-luna', '', 'sol-low', 'low'],
+    ['gpt-5.6-terra', '', 'sol', 'medium'],
+    ['gpt-5.6-sol', '', 'sol-high', 'high'],
+    ['gpt-5.6-astra', '', 'sol-high', 'high'],
+    ['gpt-5.6-luna', 'high', 'sol-low', 'high'], // recorded + allowed effort is kept
+    ['gpt-5.6-terra', 'xhigh', 'sol', 'medium'] // recorded but not allowed -> tier-implied
+  ];
+  let n = 0;
+  for (const [model, effort, tier, wantEffort] of cases) {
+    reset();
+    const id = `thread-remap-${n++}`;
+    writePriorJob(outRoot, `codex-${n}`, { vendor: 'codex', idField: 'thread_id', id, model, effort, startedAt: '2026-01-01T00:00:00.000Z' });
+    await invoke('resume', 'codex', id, briefFile, opts);
+    const args = codexArgs();
+    assert.match(args, /-c model=gpt-6\.1-sol\b/, args);
+    assert.match(args, new RegExp(`model_reasoning_effort=${wantEffort}\\b`), args);
+    assert.deepEqual(select(), [`SELECT: vendor=codex tier=${tier} model=gpt-6.1-sol effort=${wantEffort} why=resume-remap (recorded ${model} → gpt-6.1-sol)`]);
+  }
+}));
+
+test('F4: claude resume remap reaches --model (opus-class -> claude-opus-5-5; sonnet/haiku -> claude-sonnet-5-5), SELECT logs the remap', withFakeVendors(async ({ briefFile, opts, outRoot, claudeArgsFile, select, reset }) => {
+  const cases = [['claude-opus-5', 'claude-opus-5-5', 'opus'], ['claude-opus-4-1-20250805', 'claude-opus-5-5', 'opus'], ['claude-haiku-4-5-20251001', 'claude-sonnet-5-5', 'sonnet'], ['claude-sonnet-4-6', 'claude-sonnet-5-5', 'sonnet']];
+  let n = 0;
+  for (const [recorded, want, tier] of cases) {
+    reset();
+    const id = `sess-remap-${n++}`;
+    writePriorJob(outRoot, `claude-${n}`, { vendor: 'claude', idField: 'session_id', id, model: recorded, startedAt: '2026-01-01T00:00:00.000Z' });
+    await invoke('resume', 'claude', id, briefFile, opts);
+    const args = fs.readFileSync(claudeArgsFile, 'utf8');
+    assert.match(args, new RegExp(`--resume ${id} --model ${want}\\b`), args);
+    assert.deepEqual(select(), [`SELECT: vendor=claude tier=${tier} model=${want} effort=default why=resume-remap (recorded ${recorded} → ${want})`]);
+  }
+}));
+
+test('F5: legacy resume with an empty recorded effort uses the resolved tier effort, so SELECT and the spawned effort agree', withFakeVendors(async ({ briefFile, opts, outRoot, codexArgs, select, reset }) => {
+  const cases = [['sol-high', 'high'], ['sol-low', 'low'], ['sol', 'medium'], ['', 'medium']];
+  let n = 0;
+  for (const [tier, want] of cases) {
+    reset();
+    const id = `thread-legacy-${n++}`;
+    writePriorJob(outRoot, `legacy-${n}`, { vendor: 'codex', idField: 'thread_id', id, model: 'gpt-6.1-sol', tier, effort: '', startedAt: '2026-01-01T00:00:00.000Z' });
+    await invoke('resume', 'codex', id, briefFile, opts);
+    assert.match(codexArgs(), new RegExp(`model_reasoning_effort=${want}\\b`), codexArgs());
+    assert.match(select()[0], new RegExp(`effort=${want} why=resume$`), select()[0]);
+  }
+}));
+
+test('F6: a run resolves its selection once (an unknown cursor tier prints its note once, not twice)', withFakeVendors(async ({ briefFile, opts, errors }) => {
+  await invoke('run', 'cursor', 'mystery-model', briefFile, opts).catch(() => {});
+  assert.equal(errors.filter(e => /unknown cursor tier 'mystery-model'/.test(e)).length, 1, JSON.stringify(errors));
+}));
+
+test('F7: exhausted worker with no other configured vendor prints "no other configured vendor", not an empty reroute list', withFakeVendors(async ({ briefFile, opts, scratchHome, logs }) => {
+  const { saveConfig } = require('../lib/policy');
+  saveConfig(scratchHome, { priority: ['codex'] });
+  process.env.DELEGATE_TEST_CODEX_FAIL = '1';
+  try {
+    const result = await invoke('run', 'codex', 'sol', briefFile, opts);
+    assert.equal(result.exhausted, true, JSON.stringify(result.reason));
+  } finally {
+    delete process.env.DELEGATE_TEST_CODEX_FAIL;
+  }
+  assert.ok(logs.some(l => l === 'CODEX EXHAUSTED — no other configured vendor'), JSON.stringify(logs.filter(l => /EXHAUSTED/.test(l))));
+  assert.ok(!logs.some(l => /reroute to\s*$/.test(l)));
+}));
+
+test('handoff / run auto pass `why` through to the SELECT line; codex critical handoff target is sol-high at effort high', withFakeVendors(async ({ dir, briefFile, opts, cwd, codexArgs, select, reset }) => {
+  const { handoff } = require('../lib/handoff');
+  const { runAuto } = require('../lib/route');
+  const mkJob = (name, meta) => {
+    const jobDir = path.join(dir, name);
+    fs.mkdirSync(jobDir);
+    fs.writeFileSync(path.join(jobDir, 'brief.md'), 'original brief\n');
+    fs.writeFileSync(path.join(jobDir, 'last.md'), 'WORKER FAILED: quota exhausted\n');
+    fs.writeFileSync(path.join(jobDir, 'exit'), '1');
+    fs.writeFileSync(path.join(jobDir, 'meta.json'), JSON.stringify({ vendor: 'agy', model: 'gemini-3.8-flash-high', cwd, ...meta }));
+    return jobDir;
+  };
+  await handoff(mkJob('job-plain', {}), 'codex', undefined, opts);
+  assert.deepEqual(select(), ['SELECT: vendor=codex tier=sol model=gpt-6.1-sol effort=medium why=handoff-default']);
+  reset();
+  await handoff(mkJob('job-crit', { critical: true }), 'codex', undefined, opts);
+  assert.match(codexArgs(), /-m gpt-6\.1-sol .*model_reasoning_effort=high\b/);
+  assert.deepEqual(select(), ['SELECT: vendor=codex tier=sol-high model=gpt-6.1-sol effort=high why=handoff-critical-default']);
+  reset();
+  const rows = [['codex', 'wk 40% · 5h 20%', '?']];
+  const auto = { ...opts, rows, priority: 'codex', respectPolicy: false, home: path.join(dir, 'home') };
+  await runAuto(briefFile, auto, '');
+  assert.deepEqual(select(), ['SELECT: vendor=codex tier=sol model=gpt-6.1-sol effort=medium why=auto-default']);
+  reset();
+  await runAuto(briefFile, { ...auto, critical: true }, '');
+  assert.deepEqual(select(), ['SELECT: vendor=codex tier=sol-high model=gpt-6.1-sol effort=high why=auto-critical-default']);
 }));

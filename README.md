@@ -295,13 +295,18 @@ on `run`, `resume`, `handoff`, and `run auto`):
 | claude | `sonnet` (default) | claude-sonnet-5-5 | — | simple / standard |
 | claude | `opus` | claude-opus-5-5 | — | reviews, big / hard work (also the critical-work tier) |
 
-Codex is one model (`gpt-6.1-sol`); effort is the knob (`--effort` overrides the tier's).
+Codex is one model (`gpt-6.1-sol`); effort is the knob (`--effort` overrides the tier's) and only
+`low`, `medium`, `high` are accepted (`banana`, `xhigh`, `max`, `ultra` are rejected with the allowed
+list, on `run`, `resume`, `handoff`, and `run auto`). `astra` is refused unless `--critical` is set,
+and always runs at `high` (any other `--effort` on astra is an error).
 Every run logs one line, e.g. `SELECT: vendor=codex tier=sol model=gpt-6.1-sol effort=medium
-why=explicit` (`why` = `explicit`, `auto-default`, `handoff-default`, `default`, `resume`, or
-`resume-remap`). On `resume`, a recorded model that is no longer allowed (e.g. `gpt-5.6-luna`,
-`claude-opus-5`) is remapped to the policy default (codex `gpt-6.1-sol`, claude
-`claude-sonnet-5-5`) and the `SELECT` line says so; a resume with no recorded model pins the policy
-default too. Other vendors (agy, grok, cursor, opencode) keep their own tier maps and raw-slug
+why=explicit` (`why` = `explicit`, `default`, `auto-default`, `auto-critical-default`,
+`handoff-default`, `handoff-critical-default`, `resume`, or `resume-remap`). On `resume`, a recorded
+model that is no longer allowed is remapped to the allowed tier of the **same size class**
+(claude `opus*` → `claude-opus-5-5`, sonnet/haiku → `claude-sonnet-5-5`; codex luna → `sol-low`,
+terra → `sol`, old sol/astra → `sol-high`; a recorded effort is kept when still allowed) and the
+`SELECT` line says `why=resume-remap (recorded X → Y)`; a resume with no recorded model pins the
+policy default. A legacy recorded thread with no effort resumes at its tier's effort. Other vendors (agy, grok, cursor, opencode) keep their own tier maps and raw-slug
 passthrough.
 
 ### Skills and tiers
@@ -588,9 +593,12 @@ stay in-house, it does not delegate for that run.
 ## Critical work and permissions
 
 A shared guard (`lib/guard.js`) refuses to run **critical** work (production/destructive-shaped
-tasks) on a small or standard model on `run`, `run auto`, and `handoff`. **`resume` never
-refuses** — a resumed thread's model was already fixed when the thread was created, so there is
-no tier left to refuse; `resume` only warns (see "What you'll see" below).
+tasks) on a small or standard model on `run`, `run auto`, `handoff`, **and `resume`**. The class
+judged is that of the (model, effort) pair that will actually run: for Codex `gpt-6.1-sol` only
+effort `high` is large, so `sol-high --critical --effort low` is refused while
+`sol --critical --effort high` is the same invocation as `sol-high`. A critical `resume` on a thread
+recorded at a lower class is refused too; pin a large one with `--tier sol-high` / `--effort high`
+(or `--model`), or pass `--allow-small`.
 
 **Which tiers pass on critical work** — only `large`-class tiers; `cursor` and `opencode` have
 none, so they're refused outright unless `--allow-small`:
@@ -634,11 +642,12 @@ Both `guard.paths` and `guard.keywords` live under the same
   `--critical`/a `guard.paths` match fired. When only the keyword heuristic fired, it prints one
   `CRITICAL? <hint> — pass --critical if this touches live systems` line per hint (max 5) and
   injects a softened caution into the worker's own prompt; the run is never refused.
-- A refused run (`--critical`/`guard.paths` only, non-`resume`) prints a `CRITICAL WORK (...):
+- A refused run or resume (`--critical`/`guard.paths` only) prints a `CRITICAL WORK (...):
   <vendor> <tier> is a <class> model; ...` error and never submits the job (no output directory
   written).
-- `resume` on critical work never refuses; it prints a warning instead, since the model was
-  already chosen at thread creation.
+- `resume` on critical work is refused exactly like `run` (non-large effective model, no
+  `--allow-small`) and the error says how to pin a large model. Reversed 2026-10: the old
+  "resume never refuses" rationale lapsed once `resume --tier/--model/--effort` could pin the model.
 - Full-bypass permission modes print an extra `WARNING: critical work with full bypass
   permissions on <vendor>; ...` line.
 

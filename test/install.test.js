@@ -6,10 +6,12 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
-const { SKILLS, hookStub, install, installHook, uninstallHook, copyPackageToInstallHome, pkgDir, installCommandShims, removeCommandShims, isOurShim, posixBinDir } = require('../lib/install');
+const { SKILLS, skillsForDelegates, hookStub, install, installHook, uninstallHook, copyPackageToInstallHome, pkgDir, installCommandShims, removeCommandShims, isOurShim, posixBinDir } = require('../lib/install');
 const { installHome } = require('../lib/util');
 const { checkedSpawn, commandExists, defaultInstall, setupVendorClis, VENDORS } = require('../lib/vendor-setup');
 const { main, parseOptions } = require('../bin/cli');
+
+const ALL_DELEGATES = 'agy,codex,grok,claude,cursor,opencode';
 
 test('install uses HOME and creates skill links in Claude, codex, and Cursor', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
@@ -21,7 +23,7 @@ test('install uses HOME and creates skill links in Claude, codex, and Cursor', a
   try {
     // No CODEX_HOME set here -> codex's skill dir must default to ~/.codex/skills, matching
     // `codex --help`'s documented default, not the old (wrong) ~/.agents/skills.
-    await install({ main: 'all', skipCliInstall: true, commandExists: () => true, env: {}, log() {} });
+    await install({ main: 'all', delegates: ALL_DELEGATES, skipCliInstall: true, commandExists: () => true, env: {}, log() {} });
     for (const runtime of ['.claude', '.codex', '.cursor']) for (const skill of SKILLS) {
       const target = path.join(fakeHome, runtime, 'skills', skill);
       assert.equal(fs.lstatSync(target).isSymbolicLink(), true, target);
@@ -67,7 +69,7 @@ test('install --main codex: links only ~/.codex/skills (default CODEX_HOME), nev
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
   const log = [];
   await install({
-    home: fakeHome, main: 'codex', skipCliInstall: true, commandExists: () => true, env: {}, log: line => log.push(line)
+    home: fakeHome, main: 'codex', delegates: ALL_DELEGATES, skipCliInstall: true, commandExists: () => true, env: {}, log: line => log.push(line)
   });
   for (const skill of SKILLS) {
     assert.equal(fs.lstatSync(path.join(fakeHome, '.codex', 'skills', skill)).isSymbolicLink(), true);
@@ -84,7 +86,7 @@ test('install --main codex: honors CODEX_HOME when set, linking there instead of
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
   const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-home-'));
   await install({
-    home: fakeHome, main: 'codex', skipCliInstall: true, commandExists: () => true,
+    home: fakeHome, main: 'codex', delegates: ALL_DELEGATES, skipCliInstall: true, commandExists: () => true,
     env: { CODEX_HOME: codexHome }, log() {}
   });
   for (const skill of SKILLS) {
@@ -127,7 +129,7 @@ test('removeManagedLink guard (via uninstall): a same-named symlink pointing out
 
 test('install --main cursor: links only ~/.cursor/skills', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
-  await install({ home: fakeHome, main: 'cursor', skipCliInstall: true, commandExists: () => true, log() {} });
+  await install({ home: fakeHome, main: 'cursor', delegates: ALL_DELEGATES, skipCliInstall: true, commandExists: () => true, log() {} });
   for (const skill of SKILLS) {
     assert.equal(fs.lstatSync(path.join(fakeHome, '.cursor', 'skills', skill)).isSymbolicLink(), true);
   }
@@ -190,7 +192,8 @@ test('install: non-interactive (no flags, no TTY) uses defaults (main claude, de
     log: line => log.push(line)
   });
   assert.deepEqual(offeredIds, ['codex', 'opencode']);
-  for (const skill of SKILLS) assert.equal(fs.lstatSync(path.join(fakeHome, '.claude', 'skills', skill)).isSymbolicLink(), true);
+  for (const skill of skillsForDelegates(['codex', 'opencode'])) assert.equal(fs.lstatSync(path.join(fakeHome, '.claude', 'skills', skill)).isSymbolicLink(), true);
+  for (const skill of SKILLS.filter(s => !skillsForDelegates(['codex', 'opencode']).includes(s))) assert.equal(fs.existsSync(path.join(fakeHome, '.claude', 'skills', skill)), false, skill);
   // routing.json now legitimately gets created by bins resolution (lib/bins.js always resolves
   // *something* for agy/codex/grok) — what must NOT happen on the silent default path is a
   // `priority` key, since that's reserved for an explicit Q2 answer or --delegates.
@@ -1307,7 +1310,7 @@ test('H3: install copies the package into the install home with the expected top
 
 test('H3: skill symlinks resolve into the install home copy, not the running packageRoot()', async () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
-  await install({ home: fakeHome, main: 'claude', skipCliInstall: true, commandExists: () => true, log() {} });
+  await install({ home: fakeHome, main: 'claude', delegates: ALL_DELEGATES, skipCliInstall: true, commandExists: () => true, log() {} });
   for (const skill of SKILLS) {
     const link = path.join(fakeHome, '.claude', 'skills', skill);
     const target = fs.readlinkSync(link);
@@ -1411,4 +1414,60 @@ test('H3: win32 shim content points at the copied cli.js via an injected platfor
   } finally {
     Object.defineProperty(process, 'platform', original);
   }
+});
+
+// --- selective skill linking: `delegates` + delegate-<vendor> for the selected delegates only ---
+test('install links `delegates` + only the selected delegates\' skills; deselected delegate skills are not created', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  await install({ home: fakeHome, main: 'claude', delegates: 'codex,opencode', skipCliInstall: true, commandExists: () => true, env: {}, log() {} });
+  const root = path.join(fakeHome, '.claude', 'skills');
+  assert.deepEqual(fs.readdirSync(root).sort(), ['delegate-codex', 'delegate-opencode', 'delegates']);
+  for (const skill of ['delegate-codex', 'delegate-opencode', 'delegates']) assert.equal(fs.lstatSync(path.join(root, skill)).isSymbolicLink(), true);
+  // vendor id agy maps to the delegate-antigravity skill; the main agent's own vendor skill is not linked unless selected
+  assert.deepEqual(skillsForDelegates(['agy', 'claude']), ['delegates', 'delegate-antigravity', 'delegate-claude']);
+});
+
+test('install prunes previously-installed delegate skill links that are no longer selected, in every target dir, and leaves foreign entries alone', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  const log = [];
+  await install({ home: fakeHome, main: 'all', delegates: ALL_DELEGATES, skipCliInstall: true, commandExists: () => true, env: {}, log() {} });
+  const roots = ['.claude', '.codex', '.cursor'].map(d => path.join(fakeHome, d, 'skills'));
+  for (const root of roots) assert.equal(fs.readdirSync(root).length, SKILLS.length);
+  // a foreign symlink and a real dir at deselected skill names must survive the prune
+  const foreignTarget = fs.mkdtempSync(path.join(os.tmpdir(), 'foreign-skill-'));
+  const claudeRoot = roots[0];
+  fs.unlinkSync(path.join(claudeRoot, 'delegate-grok'));
+  fs.symlinkSync(foreignTarget, path.join(claudeRoot, 'delegate-grok'), 'dir');
+  fs.unlinkSync(path.join(claudeRoot, 'delegate-cursor'));
+  fs.mkdirSync(path.join(claudeRoot, 'delegate-cursor'));
+  fs.writeFileSync(path.join(claudeRoot, 'delegate-cursor', 'SKILL.md'), 'user-owned\n');
+  fs.writeFileSync(path.join(claudeRoot, 'unrelated-skill'), 'keep\n');
+
+  await install({ home: fakeHome, main: 'all', delegates: 'codex,opencode', skipCliInstall: true, commandExists: () => true, env: {}, log: line => log.push(line) });
+
+  for (const root of roots) {
+    for (const gone of ['delegate-antigravity', 'delegate-claude']) assert.equal(fs.existsSync(path.join(root, gone)), false, `${root}/${gone}`);
+    for (const kept of ['delegate-codex', 'delegate-opencode', 'delegates']) assert.equal(fs.lstatSync(path.join(root, kept)).isSymbolicLink(), true);
+  }
+  // other dirs: ours pruned entirely
+  for (const root of roots.slice(1)) assert.deepEqual(fs.readdirSync(root).sort(), ['delegate-codex', 'delegate-opencode', 'delegates']);
+  // foreign symlink untouched, user-owned real dir untouched, unrelated file untouched
+  assert.equal(fs.readlinkSync(path.join(claudeRoot, 'delegate-grok')), foreignTarget);
+  assert.equal(fs.readFileSync(path.join(claudeRoot, 'delegate-cursor', 'SKILL.md'), 'utf8'), 'user-owned\n');
+  assert.equal(fs.readFileSync(path.join(claudeRoot, 'unrelated-skill'), 'utf8'), 'keep\n');
+  assert.ok(log.some(l => l === `removed ${path.join(claudeRoot, 'delegate-antigravity')}`), JSON.stringify(log));
+  assert.ok(!log.some(l => l.includes(path.join(claudeRoot, 'delegate-grok')) && /removed/.test(l)));
+  // pruning is idempotent: a second identical install changes nothing and removes nothing
+  const second = [];
+  await install({ home: fakeHome, main: 'all', delegates: 'codex,opencode', skipCliInstall: true, commandExists: () => true, env: {}, log: line => second.push(line) });
+  assert.ok(!second.some(l => /^removed .*skills/.test(l)), JSON.stringify(second));
+});
+
+test('uninstall still sweeps the full skill list (including delegates deselected by a previous install)', async () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-home-'));
+  await install({ home: fakeHome, main: 'claude', delegates: 'codex', skipCliInstall: true, commandExists: () => true, env: {}, log() {} });
+  // simulate a stale link from an older install that had every skill
+  fs.symlinkSync(path.join(pkgDir(fakeHome), 'skills', 'delegate-grok'), path.join(fakeHome, '.claude', 'skills', 'delegate-grok'), 'dir');
+  await install({ home: fakeHome, uninstall: true, log() {} });
+  assert.deepEqual(fs.readdirSync(path.join(fakeHome, '.claude', 'skills')), []);
 });

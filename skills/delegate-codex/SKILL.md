@@ -23,7 +23,11 @@ One model, `gpt-6.1-sol`; the tier sets effort. Size the task, pick the tier.
 | `astra` | gpt-6-astra | high | **critical 2D/3D/visual design work ONLY** — never for backend, refactors, reviews, or "hardest" non-visual tasks |
 
 Nothing else is selectable: `luna`/`terra` and any other model slug are rejected with an error
-listing the allowed tiers. `--effort E` overrides the tier's effort (default per tier above).
+listing the allowed tiers. `--effort E` overrides the tier's effort (default per tier above) and
+must be `low`, `medium`, or `high` — anything else (`xhigh`, `max`, `ultra`, ...) is rejected. On
+critical work the class is judged by the effective effort: only `high` is large (`sol-high --effort
+low --critical` is refused; `sol --effort high --critical` is allowed). `astra` is refused without
+`--critical` and only runs at `high`.
 Each run logs `SELECT: vendor=codex tier=… model=… effort=… why=…`.
 
 ### Strengths — route by domain
@@ -50,8 +54,9 @@ Brief filename `-` reads stdin. Only the two allowlisted slugs (`gpt-6.1-sol` = 
 `sol`, `gpt-6-astra` = `astra`) work as the tier argument; any other raw slug is rejected.
 
 Resume reuses the recorded model and effort; `--tier` wins over `--model` (both allowlist-checked);
-a recorded model that is no longer allowed (e.g. `gpt-5.6-luna`) is remapped to `gpt-6.1-sol` with a
-logged line, and no record pins `gpt-6.1-sol` with a warning (never Codex's own default). It pins model with `-c model=<slug>`,
+a recorded model that is no longer allowed is remapped to the same size class (luna → `sol-low`,
+terra → `sol`, old sol/astra → `sol-high`) with a logged line; a critical resume on a non-large
+effective model is refused (pin `--tier sol-high` or `--effort high`), and no record pins `gpt-6.1-sol` with a warning (never Codex's own default). It pins model with `-c model=<slug>`,
 sandbox with `-c sandbox_mode=` plus `--ignore-user-config` (except `--full`),
 and passes `--effort`; resume warns that Codex does not support `--add-dir`.
 

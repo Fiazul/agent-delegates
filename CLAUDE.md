@@ -59,7 +59,7 @@ node bin/cli.js handoff /path/to/out-dir codex sol --cd /path/to/repo   # contin
 - **Zero runtime npm dependencies** — no lodash, no chalk, no nothing.
 - **Commits use the personal identity** already set in `.git/config` — never change it.
 - **Never push without the user's OK.**
-- **Model policy is an allowlist** (`lib/models.js`, `STRICT_VENDORS`): codex = `gpt-6.1-sol` only (tiers `sol-low`/`sol`/`sol-high` = effort low/medium/high; `gpt-6-astra` via explicit `astra` tier, critical 2D/3D/visual design work only); claude = `claude-sonnet-5-5` / `claude-opus-5-5`. Removed tiers and raw slugs outside the list throw; resume remaps stale recorded models to the policy default. No passthrough prefixes for codex/claude. Change the policy only by editing the maps in `lib/models.js` (+ docs/tests).
+- **Model policy is an allowlist** (`lib/models.js`, `STRICT_VENDORS`): codex = `gpt-6.1-sol` only (tiers `sol-low`/`sol`/`sol-high` = effort low/medium/high; `gpt-6-astra` via explicit `astra` tier, critical 2D/3D/visual design work only); claude = `claude-sonnet-5-5` / `claude-opus-5-5`. Removed tiers and raw slugs outside the list throw; codex `--effort` must be `low|medium|high` (astra: `high` only, and only with `--critical`); resume remaps stale recorded models to the allowed tier of the same size class (claude opus→opus-5-5, sonnet/haiku→sonnet-5-5; codex luna→sol-low, terra→sol, old sol/astra→sol-high). The critical guard judges the effective (model, effort) pair (`effectiveClass` in `lib/models.js`). No passthrough prefixes for codex/claude. Change the policy only by editing the maps in `lib/models.js` (+ docs/tests).
 
 ## Gotchas
 
@@ -117,9 +117,10 @@ node bin/cli.js handoff /path/to/out-dir codex sol --cd /path/to/repo   # contin
 - The critical-work guard's keyword heuristic (brief text matched against `routing.json`'s
   `guard.keywords`/the built-in default list) only **warns** (`CRITICAL?`) — it never refuses a
   small/standard tier by itself. Only an explicit `--critical` flag or a `guard.paths` match
-  against `--cd`/`--add-dir` actually refuses. `resume` never refuses either way — it only warns
-  (via `enforce()`'s resume branch, which now prints the resolved model, not the id passed in
-  place of a tier). The model can be pinned on a resumed thread with `resume --tier T` or
+  against `--cd`/`--add-dir` actually refuses. `resume` refuses exactly like `run` (reversed 2026-10: the old
+  "resume never refuses" rationale lapsed once `resume --tier/--model/--effort` could pin the
+  model) — `enforce()` judges the effective (model, effort) class and the refusal prints the resolved model, not
+  the id passed in place of a tier, plus how to pin a large one. The model can be pinned on a resumed thread with `resume --tier T` or
   `--model M` (`resolveResumeModel()` in lib/runner.js; `--tier` wins if both are given) instead
   of only ever inheriting whatever model the prior job in that thread recorded.
 - `install`'s per-vendor login check (found/installed CLIs) reuses `lib/status.js`'s `preflight` —
@@ -144,7 +145,10 @@ node bin/cli.js handoff /path/to/out-dir codex sol --cd /path/to/repo   # contin
   `installHome()/bin`), not a `.bashrc` alias — aliases don't exist in the non-interactive shells
   most agent tooling spawns. Every shim carries the `agent-delegates shim` marker comment so
   `install`/`--uninstall` can tell "ours" from a foreign file at the same path and never touch
-  the latter. `--uninstall` removes the shims (if ours) and the whole `installHome()/pkg` copy;
+  the latter. Skills: `install` links `delegates` plus only `delegate-<vendor>` for the selected `--delegates`
+  and prunes previously-linked delegate skills no longer selected (only symlinks resolving into
+  `installHome()/pkg`, via `removeManagedLink`; foreign entries are never touched).
+  `--uninstall` removes the shims (if ours) and the whole `installHome()/pkg` copy;
   it never touches `routing.json`.
 - `route-check`/`pick`/`run auto` read a vendor-status cache at `~/.cache/delegates/rows.json`
   (`%LOCALAPPDATA%/delegates/rows.json` on Windows) when younger than `rowsTtlMinutes` in

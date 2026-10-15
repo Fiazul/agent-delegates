@@ -117,11 +117,41 @@ test('model policy: codex is one model (sol) with effort per tier; astra only by
   assert.equal(CRITICAL_TIER.claude, 'opus');
 });
 
-test('model policy: remapModel maps stale/removed recorded models to the policy default, leaves allowed ones', () => {
-  assert.deepEqual(remapModel('codex', 'gpt-5.6-luna'), { model: 'gpt-6.1-sol', remapped: true, from: 'gpt-5.6-luna' });
-  assert.deepEqual(remapModel('claude', 'claude-opus-5'), { model: 'claude-sonnet-5-5', remapped: true, from: 'claude-opus-5' });
-  assert.deepEqual(remapModel('claude', 'claude-haiku-4-5-20251001'), { model: 'claude-sonnet-5-5', remapped: true, from: 'claude-haiku-4-5-20251001' });
+test('model policy: remapModel maps stale/removed recorded models to the allowed tier of the same size class, leaves allowed ones', () => {
+  assert.deepEqual(remapModel('codex', 'gpt-5.6-luna'), { model: 'gpt-6.1-sol', tier: 'sol-low', remapped: true, from: 'gpt-5.6-luna' });
+  assert.deepEqual(remapModel('codex', 'gpt-5.6-terra'), { model: 'gpt-6.1-sol', tier: 'sol', remapped: true, from: 'gpt-5.6-terra' });
+  assert.deepEqual(remapModel('codex', 'gpt-5.6-sol'), { model: 'gpt-6.1-sol', tier: 'sol-high', remapped: true, from: 'gpt-5.6-sol' });
+  assert.deepEqual(remapModel('codex', 'gpt-5.6-astra'), { model: 'gpt-6.1-sol', tier: 'sol-high', remapped: true, from: 'gpt-5.6-astra' });
+  assert.deepEqual(remapModel('codex', 'gpt-mystery'), { model: 'gpt-6.1-sol', tier: 'sol', remapped: true, from: 'gpt-mystery' });
+  assert.deepEqual(remapModel('claude', 'claude-opus-5'), { model: 'claude-opus-5-5', tier: 'opus', remapped: true, from: 'claude-opus-5' });
+  assert.deepEqual(remapModel('claude', 'claude-opus-4-1-20250805'), { model: 'claude-opus-5-5', tier: 'opus', remapped: true, from: 'claude-opus-4-1-20250805' });
+  assert.deepEqual(remapModel('claude', 'claude-haiku-4-5-20251001'), { model: 'claude-sonnet-5-5', tier: 'sonnet', remapped: true, from: 'claude-haiku-4-5-20251001' });
+  assert.deepEqual(remapModel('claude', 'claude-sonnet-4-6'), { model: 'claude-sonnet-5-5', tier: 'sonnet', remapped: true, from: 'claude-sonnet-4-6' });
   assert.deepEqual(remapModel('codex', 'gpt-6-astra'), { model: 'gpt-6-astra', remapped: false });
   assert.deepEqual(remapModel('claude', 'claude-opus-5-5'), { model: 'claude-opus-5-5', remapped: false });
   assert.deepEqual(remapModel('opencode', 'whatever/x'), { model: 'whatever/x', remapped: false });
+});
+
+test('model policy: codex effort allowlist (low|medium|high); astra only at high', () => {
+  for (const bad of ['banana', 'xhigh', 'max', 'ultra', 'HIGH', 'minimal']) {
+    assert.throws(() => resolveSelection('codex', 'sol', bad), /effort '.*' not allowed for codex: allowed efforts low\|medium\|high/, bad);
+  }
+  for (const ok of ['low', 'medium', 'high']) assert.equal(resolveSelection('codex', 'sol', ok).effort, ok);
+  assert.equal(resolveSelection('codex', 'astra', 'high').effort, 'high');
+  assert.throws(() => resolveSelection('codex', 'astra', 'low'), /astra always runs at high effort/);
+  assert.throws(() => resolveSelection('codex', 'astra', 'medium'), /astra always runs at high effort/);
+  // other vendors keep their own effort vocabulary (not our allowlist)
+  assert.equal(resolveSelection('claude', 'opus', 'max').effort, 'max');
+});
+
+test('model policy: effectiveClass uses the effective effort for codex sol (large only at high); other vendors unchanged', () => {
+  const { effectiveClass } = require('../lib/models');
+  assert.equal(effectiveClass('codex', 'sol-high', 'low'), 'small');
+  assert.equal(effectiveClass('codex', 'sol-high', 'medium'), 'standard');
+  assert.equal(effectiveClass('codex', 'sol', 'high'), 'large');
+  assert.equal(effectiveClass('codex', 'sol-low', 'high'), 'large');
+  assert.equal(effectiveClass('codex', 'gpt-6.1-sol', 'high'), 'large');
+  assert.equal(effectiveClass('codex', 'sol-high'), 'large');
+  assert.equal(effectiveClass('codex', 'astra', 'high'), 'large');
+  assert.equal(effectiveClass('claude', 'opus', 'low'), 'large');
 });

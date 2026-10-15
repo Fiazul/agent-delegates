@@ -195,19 +195,26 @@ test('enforce warns on critical work with full bypass permissions', () => {
   assert.ok(result.warnings.some(w => /destructive commands/.test(w)));
 });
 
-test('enforce never refuses on resume, but still warns', () => {
-  const result = enforce({ vendor: 'agy', tier: '', model: '', critical: true, reasons: ['x'], options: {}, mode: 'resume' });
-  assert.equal(result.ok, true);
-  assert.ok(result.warnings.some(w => /bypass/i.test(w)));
+test('enforce on resume: critical on an unresolvable model is refused (--allow-small overrides); bypass still warns on a large model', () => {
+  const refused = enforce({ vendor: 'agy', tier: '', model: '', critical: true, reasons: ['x'], options: {}, mode: 'resume' });
+  assert.equal(refused.ok, false);
+  const bypass = enforce({ vendor: 'agy', tier: 'opus', model: 'claude-opus-4-6-thinking', critical: true, reasons: ['x'], options: {}, mode: 'resume' });
+  assert.equal(bypass.ok, true);
+  assert.ok(bypass.warnings.some(w => /bypass/i.test(w)));
 });
 
-// R10 (corrected per CLAUDE.md's documented decision — resume never refuses either way, since
-// the model was fixed at thread creation — but it must still WARN, not go silent, when a
-// follow-up brief reassesses as critical on a small/standard model).
-test('R10: enforce warns (never refuses, no --allow-small needed) when a resume follow-up is critical on a small model', () => {
-  const result = enforce({ vendor: 'codex', tier: 'sol-low', model: 'gpt-6.1-sol', critical: true, reasons: ['--critical flag set'], options: {}, mode: 'resume' });
-  assert.equal(result.ok, true);
-  assert.ok(result.warnings.some(w => /CRITICAL/.test(w) && /small model/.test(w)), JSON.stringify(result.warnings));
+// R10 (reversed 2026-10): resume now refuses critical work on a non-large model exactly like run
+// does. The old rationale (model fixed at thread creation) lapsed once resume --tier/--model/--effort
+// could pin the model; --allow-small is the only override.
+test('R10: enforce refuses a critical resume on a small model, naming how to pin a large one; --allow-small overrides with a warning', () => {
+  const result = enforce({ vendor: 'codex', tier: 'sol-low', model: 'gpt-6.1-sol', effort: 'low', critical: true, reasons: ['--critical flag set'], options: {}, mode: 'resume' });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /CRITICAL WORK/);
+  assert.match(result.message, /small model/);
+  assert.match(result.message, /On resume, pin it with --tier\/--model/);
+  const allowed = enforce({ vendor: 'codex', tier: 'sol-low', model: 'gpt-6.1-sol', effort: 'low', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'resume' });
+  assert.equal(allowed.ok, true);
+  assert.ok(allowed.warnings.some(w => /--allow-small override/.test(w)), JSON.stringify(allowed.warnings));
 });
 
 test('R10: enforce prints no critical warning on resume when the follow-up is not critical', () => {
@@ -217,25 +224,24 @@ test('R10: enforce prints no critical warning on resume when the follow-up is no
 });
 
 // m3: on resume, invoke() passes the thread/session id as `tier` (there is no tier positional on
-// resume) — the warning must never print that id as if it were a tier/model name, and must
-// reflect that --tier/--model can actually pin a model on a resumed thread now.
-test('m3: enforce\'s resume warning prints the resolved model, not the thread/session id passed as `tier`', () => {
+// resume) — the refusal must never print that id as if it were a tier/model name; it reports the
+// resolved model instead, and says --tier/--model can pin a large one.
+test('m3: enforce\'s resume refusal prints the resolved model, not the thread/session id passed as `tier`', () => {
   const result = enforce({
-    vendor: 'codex', tier: 'thread-9f3c1-not-a-tier-name', model: 'gpt-6.1-sol',
+    vendor: 'codex', tier: 'thread-9f3c1-not-a-tier-name', model: 'gpt-6.1-sol', effort: 'medium',
     critical: true, reasons: ['x'], options: {}, mode: 'resume'
   });
-  assert.equal(result.ok, true);
-  const warning = result.warnings.find(w => /CRITICAL WORK on resume/.test(w));
-  assert.ok(warning, JSON.stringify(result.warnings));
-  assert.ok(!warning.includes('thread-9f3c1-not-a-tier-name'), warning);
-  assert.match(warning, /gpt-6\.1-sol/);
-  assert.match(warning, /--tier\/--model/);
+  assert.equal(result.ok, false);
+  assert.ok(!result.message.includes('thread-9f3c1-not-a-tier-name'), result.message);
+  assert.match(result.message, /gpt-6\.1-sol/);
+  assert.match(result.message, /--tier\/--model/);
 });
 
-test('R10: enforce prints no critical warning on resume when the model is already large', () => {
-  const result = enforce({ vendor: 'codex', tier: 'sol-high', model: 'gpt-6.1-sol', critical: true, reasons: ['x'], options: {}, mode: 'resume' });
+test('R10: enforce passes a critical resume when the model is already large (sol-high, or sol at effort high)', () => {
+  const result = enforce({ vendor: 'codex', tier: 'sol-high', model: 'gpt-6.1-sol', effort: 'high', critical: true, reasons: ['x'], options: {}, mode: 'resume' });
   assert.equal(result.ok, true);
-  assert.equal(result.warnings.some(w => /CRITICAL WORK on resume/.test(w)), false);
+  assert.equal(result.warnings.some(w => /CRITICAL WORK/.test(w)), false);
+  assert.equal(enforce({ vendor: 'codex', tier: '', model: 'gpt-6.1-sol', effort: 'high', critical: true, reasons: ['x'], options: {}, mode: 'resume' }).ok, true);
 });
 
 // R12: an --allow-small override on critical work used to pass through silently; it must now
@@ -326,4 +332,26 @@ test('enforce: critical codex = sol at high only; astra passes only when chosen 
   assert.equal(ok('sol-low').ok, false);
   const refused = ok('sol');
   assert.match(refused.message, /Use sol-high/);
+});
+
+// --- effective (model, effort) class + astra gating (2026-10) ---
+test('enforce: codex class comes from the effective effort (sol-high --effort low refused; sol --effort high allowed)', () => {
+  const base = { vendor: 'codex', model: 'gpt-6.1-sol', critical: true, reasons: ['x'], options: {}, mode: 'run' };
+  const lowered = enforce({ ...base, tier: 'sol-high', effort: 'low' });
+  assert.equal(lowered.ok, false);
+  assert.match(lowered.message, /codex sol-high \(effort low\) is a small model/);
+  assert.equal(enforce({ ...base, tier: 'sol', effort: 'high' }).ok, true);
+  assert.equal(enforce({ ...base, tier: 'sol-low', effort: 'high' }).ok, true);
+  assert.equal(enforce({ ...base, tier: 'sol-high', effort: 'medium' }).ok, false);
+  assert.equal(enforce({ ...base, tier: 'sol-high', effort: 'low', options: { allowSmall: true } }).ok, true);
+});
+
+test('enforce: astra is refused unless critical; allowed on critical; resume continuing a recorded astra thread is let through', () => {
+  const run = { vendor: 'codex', tier: 'astra', model: 'gpt-6-astra', effort: 'high', reasons: ['x'], options: {}, mode: 'run' };
+  const refused = enforce({ ...run, critical: false });
+  assert.equal(refused.ok, false);
+  assert.match(refused.message, /astra.*critical 2D\/3D\/visual design work only.*--critical/);
+  assert.equal(enforce({ ...run, critical: true }).ok, true);
+  assert.equal(enforce({ ...run, critical: false, mode: 'resume' }).ok, true);
+  assert.equal(enforce({ ...run, critical: false, mode: 'resume', options: { tier: 'astra' } }).ok, false);
 });

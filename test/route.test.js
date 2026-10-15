@@ -8,7 +8,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { isHopWorthy, pickVendor, runAuto } = require('../lib/route');
+const { isHopWorthy, pickVendor, runAuto: realRunAuto } = require('../lib/route');
+
+// Hermetic: runAuto now reads routing.json `priority` from `home` (same as `pick`), so every call runs
+// against an empty scratch home unless a test passes its own `home`/`config`, never the real ~/.config.
+const ISOLATED_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-route-home-'));
+const runAuto = (briefSource, options = {}, stdinText) => realRunAuto(briefSource, { home: ISOLATED_HOME, ...options }, stdinText);
 
 test('pickVendor: claude usable with wk N% > 0', () => {
   const rows = [['claude', 'wk 42% · 5h 88%', 'opus-5.5 sonnet-5.5']];
@@ -610,4 +615,41 @@ test('R5: runAuto surfaces a failure (never hangs/silently succeeds) when every 
   }
   assert.ok(logs.some(l => /AUTO: cursor skipped — cursor boom/.test(l)), JSON.stringify(logs));
   assert.ok(logs.some(l => /AUTO: grok skipped — grok boom/.test(l)), JSON.stringify(logs));
+});
+
+test('F10: runAuto honors routing.json config.priority when --priority is not given (same resolver as pick); --priority still wins', async () => {
+  const rows = [['codex', 'wk 40% · 5h 20%', '?'], ['opencode', 'logged in · no quota API', '?'], ['claude', 'wk 50% · 5h 10%', '?']];
+  const invoke = async (mode, vendor, tier) => ({ code: 0, outDir: `/out/${vendor}`, vendor, tier, failed: false, exhausted: false });
+  // config.priority puts opencode first
+  const configured = await runAuto('brief.md', { rows, config: { priority: ['opencode', 'codex'] }, invoke, respectPolicy: false }, '');
+  assert.equal(configured.vendor, 'opencode');
+  // same via a routing.json on disk under `home`
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-route-cfg-'));
+  fs.mkdirSync(path.join(home, '.config', 'delegates'), { recursive: true });
+  const { configPath } = require('../lib/policy');
+  fs.mkdirSync(path.dirname(configPath(home)), { recursive: true });
+  fs.writeFileSync(configPath(home), JSON.stringify({ priority: ['claude', 'codex'] }));
+  const fromDisk = await runAuto('brief.md', { rows, home, invoke, respectPolicy: false }, '');
+  assert.equal(fromDisk.vendor, 'claude');
+  // explicit --priority beats config
+  const explicit = await runAuto('brief.md', { rows, home, priority: 'codex', invoke, respectPolicy: false }, '');
+  assert.equal(explicit.vendor, 'codex');
+  // the shared resolver itself
+  const { resolvePriority } = require('../lib/policy');
+  assert.deepEqual(resolvePriority(undefined, { priority: ['a', 'b'] }), ['a', 'b']);
+  assert.deepEqual(resolvePriority(' x , y ', { priority: ['a'] }), ['x', 'y']);
+  assert.deepEqual(resolvePriority('', null), ['codex', 'opencode', 'claude']);
+});
+
+test('F10: pick uses the shared resolver (--priority flag, else config.priority)', async () => {
+  const { pick, DEFAULTS } = require('../lib/policy');
+  const now = 1_700_000_000;
+  const snapshot = { ts: now, five_hour: { used_percentage: 12 }, seven_day: { used_percentage: 30, resets_at: now + 6 * 86400 } };
+  const rows = [['codex', 'wk 40% · 5h 20%', '?'], ['opencode', 'logged in · no quota API', '?']];
+  const base = { now, snapshot, rows, home: ISOLATED_HOME, config: { ...DEFAULTS, priority: ['opencode', 'codex'] } };
+  const viaConfig = await pick(base);
+  assert.equal(viaConfig.route, 'external', JSON.stringify(viaConfig));
+  assert.equal(viaConfig.vendor, 'opencode');
+  const viaFlag = await pick({ ...base, priority: 'codex' });
+  assert.equal(viaFlag.vendor, 'codex');
 });
