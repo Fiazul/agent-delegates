@@ -416,3 +416,21 @@ test('SUGGEST_CLAUDE wording is generic (no private agent-type names)', () => {
     assert.match(result.suggest, /Agent tool/);
   });
 });
+
+test('pick --self codex (Codex main): never suggests codex itself; next vendor is opencode, critical picks opencode glm', async () => {
+  const resetsAt = NOW + 6 * 86400;
+  const rows = [['codex', 'wk 40% (reset 3h) · 5h 20%', '?'], ['opencode', 'logged in · no quota API', '?']];
+  const snap = snapshot({ wk: 30, resetsAt });
+  const self = await pick({ now: NOW, config: DEFAULTS, snapshot: snap, rows, self: 'codex' });
+  assert.equal(self.route, 'external');
+  assert.equal(self.vendor, 'opencode');
+  assert.equal(self.tier, 'free');
+  const crit = await pick({ now: NOW, config: DEFAULTS, snapshot: snap, rows, self: 'codex', critical: true });
+  assert.equal(crit.vendor, 'opencode');
+  assert.equal(crit.tier, 'glm');
+  // without --self the old behaviour holds
+  assert.equal((await pick({ now: NOW, config: DEFAULTS, snapshot: snap, rows })).vendor, 'codex');
+  // only the main's own vendor has quota -> nothing to delegate to
+  const only = await pick({ now: NOW, config: DEFAULTS, snapshot: snap, rows: [rows[0]], self: 'codex' });
+  assert.notEqual(only.route, 'external');
+});

@@ -10,10 +10,10 @@ const { status } = require('../lib/status');
 const HELP = `agent-delegates — visible, reusable CLI-agent workers
 
 Usage:
-  agent-delegates install [--main claude|codex|cursor|all] [--delegates v1,v2,...] [--no-statusline] [--no-hook] [--yes] [--skip-cli-install] [--uninstall]
+  agent-delegates install [--main claude|codex|cursor|opencode|all (or a comma list, e.g. claude,codex)] [--delegates v1,v2,...] [--no-statusline] [--no-hook] [--yes] [--skip-cli-install] [--uninstall]
   agent-delegates status [--probe-grok]
   agent-delegates route-check [--json] [--self claude] [--probe]
-  agent-delegates pick [--critical] [--json] [--probe]
+  agent-delegates pick [--critical] [--json] [--probe] [--self claude|codex|opencode|...]
   agent-delegates run <vendor> <tier|model> <brief-file|-> [options]
   agent-delegates run auto <brief-file|-> [--priority v1,v2,...] [--max-hops N] [options]
   agent-delegates resume <vendor> <id> <message-file|-> [--cd DIR] [--name N] [--full] [--tier T | --model M]
@@ -33,10 +33,10 @@ Run options:
   --model M      resume: pin this raw model slug instead of the one the prior job recorded (if both --tier and --model are given, --tier wins); not valid on run — pass the model as the positional <tier|model> argument instead
   --full         Codex user configuration instead of clean room
   --safe         agy accept-edits mode (default is full permission)
-  --yolo         Grok/Claude/Cursor/OpenCode full permission mode
+  --yolo         full permission mode. Grok/Cursor/agy: as before. FULL ACCESS for Codex (danger-full-access sandbox) / Claude / OpenCode is frontier tiers only (codex sol-high | sol --effort high | astra; claude opus; opencode glm | kimi), refused otherwise; the main agent must ask the user before EVERY --yolo launch
   --priority v1,v2,...  vendor try-order for 'run auto' (default codex,opencode,claude)
   --max-hops N   max vendor attempts for 'run auto'
-  --main W       install: which CLI is the main orchestrator (claude|codex|cursor|all; default claude; a TTY asks if omitted)
+  --main W       install: which CLI is the main orchestrator (claude|codex|cursor|opencode|all, or a comma list like claude,codex; each main gets delegates + the selected delegates' skills minus its own vendor; default claude; a TTY asks if omitted)
   --delegates v1,v2,...  install: which delegate vendors to set up (agy,codex,grok,claude,cursor,opencode; default codex,opencode; a TTY asks if omitted)
   --aliases yes|no  install: add cursor-agent/grok shell aliases pointing at their resolved binaries (opt-in; a TTY asks if omitted)
   --resolve-agent-conflict yes|no  install: apply (or skip) the proposed fix when something shadows Cursor's "agent" command (Grok or an unrecognized binary resolves first on PATH; a TTY asks if omitted; default No)
@@ -52,7 +52,7 @@ Run options:
   --no-path      install: don't offer to add the shim directory to PATH on win32 (print the instruction instead)
   --statusline/--hook  accepted for compatibility; both are already on by default (no-ops)
   --json         route-check: print one JSON line instead of a human line
-  --self VENDOR  route-check: whose policy to report (only 'claude' supported for now)
+  --self VENDOR  route-check/pick/run auto: the main agent's own vendor, never suggested as a delegate (the pace verdict itself is still Claude-quota based)
   --probe        route-check/pick/run auto: force a fresh vendor-status probe instead of the cached rows
                  (route-check/pick/run auto read <console cache dir>/rows.json when younger than
                  rowsTtlMinutes, default 10; 'status' always probes and refreshes that cache)
@@ -110,7 +110,7 @@ async function main(argv = process.argv.slice(2), dependencies = {}) {
     if (command === 'route-check') {
       const { options, positional } = parseOptions(argv);
       if (positional.length) return die('route-check takes no positional arguments');
-      if (options.self && options.self !== 'claude') console.log(`--self ${options.self} unsupported, reports claude policy`);
+      if (options.self && options.self !== 'claude') console.log(`--self ${options.self}: pace verdict still uses Claude's quota snapshot (the only policy implemented); ${options.self} is excluded from delegate candidates`);
       const { routeCheck, formatRouteCheck } = require('../lib/policy');
       const result = await (dependencies.routeCheck || routeCheck)(options);
       if (options.json) {

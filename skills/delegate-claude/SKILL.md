@@ -1,6 +1,6 @@
 ---
 name: delegate-claude
-description: Use when a main agent needs to delegate work to a Claude Code worker — user says "use claude", "claude worker", "delegate to claude", or wants Claude's strengths on a subtask. Supports sonnet/opus tiers (Sonnet 5.5, Opus 5.5). Default permission is acceptEdits; --yolo bypasses permissions.
+description: Use when a main agent needs to delegate work to a Claude Code worker — user says "use claude", "claude worker", "delegate to claude", or wants Claude's strengths on a subtask. Supports sonnet/opus tiers (Sonnet 5.5, Opus 5.5). Default permission is acceptEdits; --yolo (full access) is allowed on opus only.
 ---
 
 # Delegate to Claude Code
@@ -25,8 +25,8 @@ the allowed tiers (only `claude-sonnet-5-5`/`claude-opus-5-5` pass as raw slugs)
 
 ### Strengths — route by domain
 
-- **Backend logic** (services, data pipelines, business logic, integrations, server-code debugging): Claude `opus` beats Codex `sol` → prefer Claude.
-- **2D/3D/visual design** (UI layout, canvas/SVG, three.js/WebGL, game graphics): Codex beats Claude → prefer `delegate-codex`.
+- **2D/3D/visual design** (UI layout, canvas/SVG, three.js/WebGL, game graphics, motion/visual polish): Codex `sol`/`astra`, OpenCode `kimi` (kimi-k3) — equal options, all beat Claude Opus here. Kimi's 3D sense is clearly better than Opus. Codex vs Kimi is unranked; pick by quota and availability. (`astra` only when the visual work is critical.)
+- **Backend logic** (services, data pipelines, business logic, integrations, server-code debugging): Claude `opus` (Opus 5.5) beats Codex `sol` → prefer Claude Opus.
 
 ## Commands
 
@@ -57,7 +57,24 @@ produces a worker that guesses.
 
 Default is `--permission-mode acceptEdits`: edits auto-approved, shell
 commands denied. `--yolo` enables `--dangerously-skip-permissions` for
-briefs that run commands. Scope briefs carefully when using `--yolo`.
+briefs that run commands (gated: see below). Scope briefs carefully.
+
+## Full access (`--yolo`) — frontier tiers only
+
+`--yolo` gives the Claude worker FULL access (`--dangerously-skip-permissions`). It is allowed ONLY on a frontier
+model/effort: `opus` only; `sonnet` is refused. Anything else is refused by the CLI with an error naming the eligible
+tiers (on `run`, `resume`, `handoff`, and `run auto`; in `run auto` an ineligible candidate is skipped with
+`AUTO: <vendor> skipped — <reason>`).
+
+Rules for the MAIN agent (the CLI cannot verify any of this; it is your duty):
+
+- Before EVERY `--yolo` launch, ask the user: "Delegating <task> to <vendor> <model> (<tier>) with FULL
+  access — approve?" One approval covers ONE launch. There is no standing grant.
+- Call out risky actions in that question: prod hosts, live price pushes, DB writes, deletes, deploys.
+  Repeat them in the brief.
+- Every elevated launch prints `ELEVATED: vendor=… tier=… model=… effort=… mode=…` and records
+  `elevated: true` in `meta.json`.
+
 
 ## Where the user sees it
 

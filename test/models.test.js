@@ -21,7 +21,7 @@ test('tier maps cover every vendor and documented tier', () => {
   });
   assert.deepEqual(TIER_MAPS.cursor, { auto: 'auto', composer: 'composer-2.5' });
   assert.deepEqual(TIER_MAPS.opencode, {
-    free: 'opencode/mimo-v2.5-free', go: 'opencode-go/kimi-k2.7-code'
+    free: 'opencode/mimo-v2.6-flash-free', glm: 'opencode-go/glm-5.3', kimi: 'opencode-go/kimi-k3'
   });
   assert.equal(canonicalVendor('antigravity'), 'agy');
   assert.equal(resolveModel('agy', 'gemini-custom'), 'gemini-custom');
@@ -36,7 +36,7 @@ test('tierClass classifies every documented tier per vendor', () => {
   assert.deepEqual(TIER_CLASS.grok, { fast: 'small', best: 'large' });
   assert.deepEqual(TIER_CLASS.claude, { sonnet: 'standard', opus: 'large' });
   assert.deepEqual(TIER_CLASS.cursor, { auto: 'small', composer: 'standard' });
-  assert.deepEqual(TIER_CLASS.opencode, { free: 'small', go: 'small' });
+  assert.deepEqual(TIER_CLASS.opencode, { free: 'small', glm: 'large', kimi: 'large' });
 
   for (const vendor of Object.keys(TIER_CLASS)) {
     for (const tier of Object.keys(TIER_CLASS[vendor])) {
@@ -70,7 +70,7 @@ test('R16: resolveModel notes an unrecognized cursor tier to stderr but still pa
 
 test('CRITICAL_TIER names the recommended tier per vendor', () => {
   assert.deepEqual(CRITICAL_TIER, {
-    codex: 'sol-high', agy: 'opus', grok: 'best', claude: 'opus', cursor: null, opencode: null
+    codex: 'sol-high', agy: 'opus', grok: 'best', claude: 'opus', cursor: null, opencode: 'glm'
   });
 });
 

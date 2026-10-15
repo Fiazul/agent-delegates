@@ -1,6 +1,6 @@
 ---
 name: delegate-opencode
-description: Use when delegating a task to an OpenCode worker — user says "opencode", "use opencode", or wants an OpenCode free/go model. Runs non-interactively via `opencode run --format json`.
+description: Use when delegating a task to an OpenCode worker — user says "opencode", "use opencode", or wants an OpenCode free, glm, or kimi model. Runs non-interactively via `opencode run --format json`.
 ---
 
 # Delegate to OpenCode
@@ -9,16 +9,26 @@ For any orchestrator that wants to delegate to OpenCode.
 Same brief/acceptance/review rules as all other vendor workers.
 The launcher prepends the standard worker preamble.
 
-Critical work (`--critical`): none — opencode has no large tier and is refused outright unless `--allow-small`.
+Critical work (`--critical`): only `glm`/`kimi` (frontier). The `free` tier and any `-free` slug are
+NEVER critical: refused even with `--allow-small`.
 
 ## Tier ladder
 
-| Tier | OpenCode model | Use for |
-|------|----------------|---------|
-| `free` | opencode/mimo-v2.5-free | **default** free-tier work |
-| `go` | opencode-go/kimi-k2.7-code | harder tasks on OpenCode Go |
+| Tier | OpenCode model | Class | Use for |
+|------|----------------|-------|---------|
+| `free` | opencode/mimo-v2.6-flash-free | small | **default**; use ONLY when the user names OpenCode or for simple tasks. Never critical, never `--yolo` |
+| `glm` | opencode-go/glm-5.3 | large | frontier: hard / critical work (the critical tier for `run auto`/`handoff`) |
+| `kimi` | opencode-go/kimi-k3 | large | frontier: hard / critical work, strong 2D/3D/visual design |
 
-`--yolo` maps to `--auto`. Raw `provider/model` slugs from `opencode models` also work.
+`glm` and `kimi` are frontier models. Raw `provider/model` slugs from `opencode models` also work
+and are classed by name: any `*-free` slug is small; `opencode-go/glm-*` / `opencode-go/kimi-*` are
+large (`-flash` variants excepted: standard); every other slug is standard (never large, so never
+critical without `--allow-small` and never `--yolo`).
+
+### Strengths — route by domain
+
+- **2D/3D/visual design** (UI layout, canvas/SVG, three.js/WebGL, game graphics, motion/visual polish): Codex `sol`/`astra`, OpenCode `kimi` (kimi-k3) — equal options, all beat Claude Opus here. Kimi's 3D sense is clearly better than Opus. Codex vs Kimi is unranked; pick by quota and availability. (`astra` only when the visual work is critical.)
+- **Backend logic** (services, data pipelines, business logic, integrations, server-code debugging): Claude `opus` (Opus 5.5) beats Codex `sol` → prefer Claude Opus.
 
 ## Commands
 
@@ -50,6 +60,23 @@ produces a worker that guesses.
 Without `--yolo`, headless OpenCode may deny permission requests.
 `--yolo` enables `--auto` (auto-approve permissions that are not explicitly
 denied). Scope briefs carefully when using `--yolo`.
+
+## Full access (`--yolo`) — frontier tiers only
+
+`--yolo` gives the OpenCode worker FULL access (`--auto`). It is allowed ONLY on a frontier
+model/effort: `glm` and `kimi` (and raw `opencode-go/glm-*`/`kimi-*` slugs); `free`/`-free`/unknown slugs are refused. Anything else is refused by the CLI with an error naming the eligible
+tiers (on `run`, `resume`, `handoff`, and `run auto`; in `run auto` an ineligible candidate is skipped with
+`AUTO: <vendor> skipped — <reason>`).
+
+Rules for the MAIN agent (the CLI cannot verify any of this; it is your duty):
+
+- Before EVERY `--yolo` launch, ask the user: "Delegating <task> to <vendor> <model> (<tier>) with FULL
+  access — approve?" One approval covers ONE launch. There is no standing grant.
+- Call out risky actions in that question: prod hosts, live price pushes, DB writes, deletes, deploys.
+  Repeat them in the brief.
+- Every elevated launch prints `ELEVATED: vendor=… tier=… model=… effort=… mode=…` and records
+  `elevated: true` in `meta.json`.
+
 
 ## Where the user sees it
 

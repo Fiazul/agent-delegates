@@ -43,7 +43,7 @@ guessing. The Claude Code statusline and routing-nudge hooks are Claude
 Code–specific, so they're only installed when the main is `claude` or `all`
 (one line explains this when a Codex/Cursor-only main is chosen) — `--no-statusline`/`--no-hook`
 still opt out even then. Non-interactively (no TTY, no `--main`), the default
-is `claude`. Override with `--main claude|codex|cursor|all`.
+is `claude`. Override with `--main claude|codex|cursor|opencode|all` or a comma list (`--main claude,codex`). Each main gets `delegates` plus the selected delegates' skills minus its own vendor (Claude main: no delegate-claude; Codex main: no delegate-codex; ...). OpenCode main links `~/.config/opencode/skills`; note OpenCode also auto-loads `~/.claude/skills` and `~/.agents/skills`, so it sees the Claude-main links too (install prints how to hide them).
 
 **Q2 (delegates)** decides which vendor CLIs get checked/offered for install
 (unselected vendors are never mentioned), sets `priority` in
@@ -318,7 +318,7 @@ passthrough.
 | delegate-grok | fast, best |
 | delegate-claude | sonnet, opus |
 | delegate-cursor | auto, composer |
-| delegate-opencode | free, go |
+| delegate-opencode | free, glm, kimi |
 | delegates | Remaining quota and models for all six vendors |
 
 The skill documents list model mappings, permission semantics, and
@@ -335,18 +335,19 @@ orchestration guidance.
 | `--ro` | Codex | read-only sandbox |
 | `--full` | Codex | user configuration instead of clean room; repeat on resume |
 | `--safe` | agy | accept-edits mode (default is full permission) |
-| `--yolo` | Grok, Claude, Cursor, OpenCode | full permission mode |
+| `--yolo` | Grok, Claude, Cursor, OpenCode, Codex | full permission mode. Codex/Claude/OpenCode: frontier tiers only (see "Full access gate") |
 | `--critical` | all | mark this brief as critical work (prod/servers/live data): a large-tier model is required (see "Critical work and permissions") |
 | `--allow-small` | all | override the critical-work guard and allow a small/standard model (not recommended) |
 | `--timeout MIN` | all | kill the worker after `MIN` minutes and classify the job "timed out" (default 90, env `DELEGATE_JOB_TIMEOUT_MIN`); exit code 124 |
 | `--no-preflight` | all | skip the pre-spawn login check for the vendor CLI |
 | `--json` | route-check, pick | print one JSON line instead of a human-readable line |
-| `--self VENDOR` | route-check | whose routing policy to report (only `claude` supported today) |
+| `--self VENDOR` | route-check, pick, run auto | the main agent's own vendor, excluded from delegate candidates (pace verdict is still Claude-quota based) |
 | `--priority v1,v2,...` | run auto | vendor try-order (default `codex,opencode,claude`) |
 | `--max-hops N` | run auto | max vendor hand-off attempts (default 2) |
 
 Codex uses `workspace-write` (or `--ro`), with an auth-only `~/.codex-fresh`
-home. Codex never uses the sandbox-bypass flag.
+home. Codex never uses the sandbox-bypass flag; `--yolo` (frontier tiers only) selects the
+`danger-full-access` sandbox instead.
 
 Antigravity defaults to `--dangerously-skip-permissions` because headless
 `accept-edits` auto-denies shell commands. `--safe` selects accept-edits.
@@ -538,10 +539,11 @@ route=claude  wk 3% used · 5h 21% · 6.9% of week elapsed · reason: wk 3% used
 ```
 
 `--json` prints one line: `{route, reason, claudeWk, fiveHour, elapsedPct, stale, nextVendor}`.
-`--self claude` is accepted (and is the only value supported today); any
-other vendor prints "unsupported, reports claude policy" and still reports
-Claude's policy — the flag exists so a future `--self codex` has a stable
-place to land (see TODO.md).
+`--self VENDOR` names the main agent running the CLI. The pace verdict is still
+Claude's (the only quota-snapshot policy implemented; a non-Claude main prints a note saying so), but
+`--self` removes that vendor from the delegate candidates in `route-check`, `pick` and `run auto`, so a
+Codex main (`--self codex`) is never told to delegate to codex itself. A real Codex-quota pace rule
+remains the open item (see TODO.md).
 
 ### `pick`: the one-line pre-spawn decision
 
@@ -610,10 +612,25 @@ none, so they're refused outright unless `--allow-small`:
 | claude | `opus` | no |
 | grok | `best` | no |
 | cursor | *(none)* | no* |
-| opencode | *(none)* | no* |
+| opencode | `glm` (or `kimi`) | no for standard raw slugs; **yes** for `free`/`-free` (never critical) |
 
-\* `--allow-small` still overrides the refusal and lets the run proceed — it just has no large
-tier to promote to, since this vendor never has one.
+\* cursor: `--allow-small` still overrides the refusal and lets the run proceed — it has no large
+tier to promote to. OpenCode `free`/`-free` models are never critical-capable: `--critical` is refused
+even with `--allow-small`. `run auto`/`handoff` use `glm` for critical OpenCode work.
+
+### Full access gate (`--yolo`)
+
+`--yolo` on **codex**, **claude** and **opencode** runs only on a frontier (class `large`) model/effort:
+codex `sol-high`, `sol --effort high`, `astra`; claude `opus`; opencode `glm`, `kimi` (and raw
+`opencode-go/glm-*`/`kimi-*` slugs). Everything else (codex `sol`/`sol-low` below effort high, claude `sonnet`,
+opencode `free`/unknown slugs) is refused with an error naming the eligible tiers, on `run`, `resume`,
+`handoff` and `run auto` (auto skips ineligible candidates with `AUTO: <vendor> skipped — <reason>`).
+Codex maps it to `-s danger-full-access` (never `--dangerously-bypass-approvals-and-sandbox`); `--ro --yolo`
+is refused. agy/grok/cursor are not gated. Every full-access launch prints
+`ELEVATED: vendor=… tier=… model=… effort=… mode=…` and records `elevated: true` in `meta.json`.
+The CLI cannot verify user approval: the main agent must ask the user before EVERY `--yolo` launch
+(one approval = one launch, no standing grant) and call out risky actions (prod hosts, live price pushes,
+DB writes). The delegate-* skills carry this rule.
 
 **How criticality is detected, and what each detector does** (`assessCriticality`):
 - `--critical` passed explicitly on the CLI, **or** the working directory/an `--add-dir` matches
@@ -656,8 +673,8 @@ sandboxed (`workspace-write`, or read-only with `--ro`) and never gets a bypass 
 with full bypass (`--dangerously-skip-permissions`) by default — pass `--safe` to restrict it to
 accept-edits. `claude` defaults to `acceptEdits`; `cursor` defaults to trust-workspace (no
 `--force`); `grok` and `opencode` default to approval prompts. `--yolo` grants full bypass on
-`claude`, `cursor`, `grok`, and `opencode` (it has no effect on `codex`, and `agy` uses `--safe`
-instead of `--yolo`).
+`claude`, `cursor`, `grok`, `opencode` and `codex` (full-access sandbox; codex/claude/opencode only on
+frontier tiers, see "Full access gate"; `agy` uses `--safe` instead of `--yolo`).
 
 **`--allow-small`** overrides the tier refusal (not recommended) — the run proceeds on whatever
 tier was asked for, but still prints the bypass warning if applicable. It does not suppress the

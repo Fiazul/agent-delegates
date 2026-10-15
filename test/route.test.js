@@ -653,3 +653,21 @@ test('F10: pick uses the shared resolver (--priority flag, else config.priority)
   const viaFlag = await pick({ ...base, priority: 'codex' });
   assert.equal(viaFlag.vendor, 'codex');
 });
+
+test('runAuto --self codex: the main agent\'s own vendor is dropped from the priority list', async () => {
+  const calls = [];
+  const logs = [];
+  const orig = console.log;
+  console.log = (...a) => logs.push(a.join(' '));
+  try {
+    const result = await runAuto('brief.md', {
+      self: 'codex', priority: 'codex,opencode', respectPolicy: false,
+      rows: [['codex', 'wk 40% · 5h 20%', '?'], ['opencode', 'logged in · no quota API', '?']],
+      assess: () => ({ critical: false, suspected: false, hints: [] }),
+      resolveBin: () => ({ command: 'x' }),
+      invoke: async (mode, vendor) => { calls.push(vendor); return { code: 0, outDir: '/tmp/x', exhausted: false, failed: false }; }
+    }, '');
+    assert.equal(result.vendor, 'opencode');
+  } finally { console.log = orig; }
+  assert.deepEqual(calls, ['opencode']);
+});

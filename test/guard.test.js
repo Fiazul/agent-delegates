@@ -8,6 +8,7 @@ const test = require('node:test');
 const {
   DEFAULT_GUARD, assessCriticality, capList, configPath, enforce, keywordRegex, loadGuardConfig, pathMatches, permissionMode
 } = require('../lib/guard');
+const { TIER_MAPS, rawSlugClass, tierClass } = require('../lib/models');
 
 test('loadGuardConfig falls back to defaults when the file is missing or invalid', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'delegates-guard-'));
@@ -158,11 +159,22 @@ test('enforce passes a large model on critical work (codex sol-high, grok best)'
   assert.equal(grokBest.ok, true);
 });
 
-test('enforce refuses opencode and cursor on critical work (no large tier) unless allowSmall', () => {
-  const opencodeRefused = enforce({ vendor: 'opencode', tier: 'go', model: 'opencode-go/kimi-k2.7-code', critical: true, reasons: ['x'], options: {}, mode: 'run' });
-  assert.equal(opencodeRefused.ok, false);
-  const opencodeAllowed = enforce({ vendor: 'opencode', tier: 'go', model: 'opencode-go/kimi-k2.7-code', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'run' });
-  assert.equal(opencodeAllowed.ok, true);
+test('enforce: opencode free is NEVER critical (even with allowSmall); glm/kimi are; cursor refused unless allowSmall', () => {
+  const freeRefused = enforce({ vendor: 'opencode', tier: 'free', model: 'opencode/mimo-v2.6-flash-free', critical: true, reasons: ['x'], options: {}, mode: 'run' });
+  assert.equal(freeRefused.ok, false);
+  const freeOverride = enforce({ vendor: 'opencode', tier: 'free', model: 'opencode/mimo-v2.6-flash-free', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'run' });
+  assert.equal(freeOverride.ok, false, '--allow-small must not unlock opencode free on critical work');
+  assert.match(freeOverride.message, /never runs on OpenCode free models/);
+  // a raw -free slug is classed small, so it is refused the same way
+  const rawFree = enforce({ vendor: 'opencode', tier: 'opencode/nemotron-3-ultra-free', model: 'opencode/nemotron-3-ultra-free', critical: true, reasons: ['x'], options: { allowSmall: true }, mode: 'run' });
+  assert.equal(rawFree.ok, false);
+  for (const tier of ['glm', 'kimi']) {
+    assert.equal(enforce({ vendor: 'opencode', tier, model: TIER_MAPS.opencode[tier], critical: true, reasons: ['x'], options: {}, mode: 'run' }).ok, true, tier);
+  }
+  // other unknown raw slugs are standard: refused on critical, allowed only with allowSmall
+  const std = { vendor: 'opencode', tier: 'opencode/other', model: 'opencode/other', critical: true, reasons: ['x'] , mode: 'run' };
+  assert.equal(enforce({ ...std, options: {} }).ok, false);
+  assert.equal(enforce({ ...std, options: { allowSmall: true } }).ok, true);
 
   const cursorRefused = enforce({ vendor: 'cursor', tier: 'composer', model: 'composer-2.5', critical: true, reasons: ['x'], options: {}, mode: 'run' });
   assert.equal(cursorRefused.ok, false);

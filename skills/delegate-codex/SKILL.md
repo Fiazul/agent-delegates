@@ -32,8 +32,8 @@ Each run logs `SELECT: vendor=codex tier=… model=… effort=… why=…`.
 
 ### Strengths — route by domain
 
-- **2D/3D/visual design** (UI layout, canvas/SVG, three.js/WebGL, game graphics, motion/visual polish): Codex clearly beats Claude → prefer Codex (`sol`/`sol-high`; `astra` only when the visual work is critical).
-- **Backend logic** (services, data pipelines, business logic, integrations, server-code debugging): Claude Opus 5.5 beats `sol` → prefer Claude (`opus`).
+- **2D/3D/visual design** (UI layout, canvas/SVG, three.js/WebGL, game graphics, motion/visual polish): Codex `sol`/`astra`, OpenCode `kimi` (kimi-k3) — equal options, all beat Claude Opus here. Kimi's 3D sense is clearly better than Opus. Codex vs Kimi is unranked; pick by quota and availability. (`astra` only when the visual work is critical.)
+- **Backend logic** (services, data pipelines, business logic, integrations, server-code debugging): Claude `opus` (Opus 5.5) beats Codex `sol` → prefer Claude Opus.
 
 ## Commands
 
@@ -49,7 +49,7 @@ agent-delegates interrupt codex      # or interrupt my-task
 agent-delegates close codex
 ```
 
-`--ro` selects read-only sandbox (reviews). `--add-dir D` adds writable dirs.
+`--ro` selects read-only sandbox (reviews); `--yolo` selects the full-access sandbox (see Full access below; incompatible with `--ro`). `--add-dir D` adds writable dirs.
 Brief filename `-` reads stdin. Only the two allowlisted slugs (`gpt-6.1-sol` = tier
 `sol`, `gpt-6-astra` = `astra`) work as the tier argument; any other raw slug is rejected.
 
@@ -59,6 +59,22 @@ terra → `sol`, old sol/astra → `sol-high`) with a logged line; a critical re
 effective model is refused (pin `--tier sol-high` or `--effort high`), and no record pins `gpt-6.1-sol` with a warning (never Codex's own default). It pins model with `-c model=<slug>`,
 sandbox with `-c sandbox_mode=` plus `--ignore-user-config` (except `--full`),
 and passes `--effort`; resume warns that Codex does not support `--add-dir`.
+
+## Full access (`--yolo`) — frontier tiers only
+
+`--yolo` gives the Codex worker FULL access (`sandbox_mode=danger-full-access`; never `--dangerously-bypass-approvals-and-sandbox`). It is allowed ONLY on a frontier
+model/effort: `sol-high`, `sol --effort high`, `astra` (astra also needs `--critical`); `sol-low` and `sol` below effort high are refused. Anything else is refused by the CLI with an error naming the eligible
+tiers (on `run`, `resume`, `handoff`, and `run auto`; in `run auto` an ineligible candidate is skipped with
+`AUTO: <vendor> skipped — <reason>`).
+
+Rules for the MAIN agent (the CLI cannot verify any of this; it is your duty):
+
+- Before EVERY `--yolo` launch, ask the user: "Delegating <task> to <vendor> <model> (<tier>) with FULL
+  access — approve?" One approval covers ONE launch. There is no standing grant.
+- Call out risky actions in that question: prod hosts, live price pushes, DB writes, deletes, deploys.
+  Repeat them in the brief.
+- Every elevated launch prints `ELEVATED: vendor=… tier=… model=… effort=… mode=…` and records
+  `elevated: true` in `meta.json`.
 
 ## Writing the brief
 
@@ -110,4 +126,4 @@ The orchestrator drops a job file, spends no tokens watching, and gets
 | Need to continue on a *different* vendor (quota/reset too far out) | Don't hand-roll a new brief — `agent-delegates handoff <job-dir> <vendor> [tier] --cd DIR` builds a continuation brief from the failed job's brief/meta/last.md/events/git-state and fires it at the new vendor. |
 
 Never use `--dangerously-bypass-approvals-and-sandbox`; `workspace-write` +
-`--add-dir` covers worktrees.
+`--add-dir` covers worktrees. Full access only via the gated `--yolo` above.

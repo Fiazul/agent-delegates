@@ -25,3 +25,22 @@ test('every delegate-*/SKILL.md points to brief-template.md', () => {
     assert.ok(text.includes('brief-template.md'), `${dir}/SKILL.md does not mention brief-template.md`);
   }
 });
+
+test('delegate-codex/claude/opencode share the same domain-routing block and the same full-access rules (main-agnostic)', () => {
+  const texts = ['delegate-codex', 'delegate-claude', 'delegate-opencode'].map(d => [d, fs.readFileSync(path.join(repoRoot, 'skills', d, 'SKILL.md'), 'utf8')]);
+  const block = text => text.match(/### Strengths — route by domain\n\n([\s\S]*?)\n\n## /)?.[1];
+  const first = block(texts[0][1]);
+  assert.ok(first && /OpenCode `kimi`/.test(first) && /Claude `opus`/.test(first), 'codex skill has the strengths block');
+  for (const [name, text] of texts) {
+    assert.equal(block(text), first, `${name} strengths block differs`);
+    assert.match(text, /## Full access \(`--yolo`\) — frontier tiers only/, name);
+    assert.match(text, /Before EVERY `--yolo` launch, ask the user: "Delegating <task> to <vendor> <model> \(<tier>\) with FULL\s+access — approve\?"/, name);
+    assert.match(text, /One approval covers ONE launch\. There is no standing grant\./, name);
+    assert.match(text, /prod hosts, live price pushes, DB writes/, name);
+    assert.match(text, /CLI cannot verify any of this/, name);
+    assert.doesNotMatch(text, /orchestrator is Claude|Claude Code main|you are Claude/i, `${name} must stay main-agnostic`);
+  }
+  const oc = texts[2][1];
+  assert.match(oc, /use ONLY when the user names OpenCode or for simple tasks/);
+  assert.match(oc, /`glm` and `kimi` are frontier models/);
+});
